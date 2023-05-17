@@ -2,12 +2,12 @@
 #include <franka/gripper.h>
 #include <franka/exception.h>
 #include <franka/gripper_state.h>
-#include <franka_gripper/GraspAction.h>
-#include <franka_gripper/HomingAction.h>
-#include <franka_gripper/MoveAction.h>
-#include <franka_gripper/StopAction.h>
+// #include <franka_gripper/GraspAction.h>
+// #include <franka_gripper/HomingAction.h>
+// #include <franka_gripper/MoveAction.h>
+// #include <franka_gripper/StopAction.h>
 #include </opt/ros/noetic/include/control_msgs/GripperCommandActionGoal.h>
-#include </home/matteo/catkin_ws/devel/include/franka_gripper/GraspActionGoal.h>
+// #include </home/matteo/catkin_ws/devel/include/franka_gripper/GraspActionGoal.h>
 
 #include <iostream>
 #include <fstream>
@@ -21,7 +21,7 @@
 
 #include <geometry_msgs/PoseStamped.h>
 
-// Not certain about the meaning
+
 #include <panda_controllers/DesiredTrajectory.h>
 // #include <panda_controllers/DesiredTrajectory.h>
 // #include <panda_controllers/cubeRef.h>
@@ -289,12 +289,12 @@ void interpolator_pos(Eigen::Vector3d pos_i, Eigen::Vector3d pos_f,
 }
 
 void interpolator_posSpeed(Eigen::Vector3d pos_i, Eigen::Vector3d vel_i,
-                      double tf, double t)
+                           double tf, double t)
 {
   // Used to stop after throw
-  traj.pos_des << pos_i + vel_i*t + vel_i*(-0.5*pow(t,2)/tf);
-  traj.vel_des <<  vel_i* (1 - (t/tf));
-  traj.acc_des << vel_i * (-1/tf);
+  traj.pos_des << pos_i + vel_i * t + vel_i * (-0.5 * pow(t, 2) / tf);
+  traj.vel_des << vel_i * (1 - (t / tf));
+  traj.acc_des << vel_i * (-1 / tf);
 }
 
 Quaternion normalizeQuat(Quaternion q)
@@ -422,36 +422,124 @@ Eigen::Matrix<double, 3, 3> getRM(double angle, char ax)
 
   return R;
 }
-// franka_gripper::GraspActionGoal gripGraspMove(double value)
-// {
-//   // Giving 0 the gripper closes, any other value makes the gripper switch state (e.g. from open to close)
-//   franka_gripper::GraspActionGoal gripper_grasp_msg;
-//   double p;
-//   if (value == 0)
-//     p = 0;
-//   else
-//   {
-//     p = 0.0001;
-//   }
 
-//   gripper_grasp_msg.goal.width = p;
-//   gripper_grasp_msg.goal.epsilon.inner = 0.08;
-//   gripper_grasp_msg.goal.epsilon.outer = 0.08;
+void waitForPos()
+{
+  ros::Rate loop_rate(100);
+  pos_received = false;
+  while (!pos_received)
+  {
+    ros::spinOnce();
+    loop_rate.sleep();
+  }
+}
 
-//   gripper_grasp_msg.goal.speed = 0.04;
-//   gripper_grasp_msg.goal.force = 0.5;
+void move_EE(Eigen::Vector3d posStart, Eigen::Vector3d posEnd, Quaternion curr_or, ros::Publisher pub_cmd)
+{
+  ros::Time t_init;
+  double t, tr;
+  ros::Rate loop_rate(100);
+  panda_controllers::DesiredTrajectory traj_msg;
+  t_init = ros::Time::now();
+  waitForPos();
+  while (!isClose(pos, posEnd, 0.01))
+  {
+    t = (ros::Time::now() - t_init).toSec();
+    tr = t;
+    if (t > PP_time)
+    {
+      t = PP_time;
+    }
 
-//   gripper_grasp_msg.goal_id.id = "";
-//   gripper_grasp_msg.goal_id.stamp.nsec = 0;
-//   gripper_grasp_msg.goal_id.stamp.sec = 0;
+    if (tr > 2 * PP_time)
+    {
+      break;
+    }
 
-//   gripper_grasp_msg.header.frame_id = "";
-//   gripper_grasp_msg.header.seq = 0;
-//   gripper_grasp_msg.header.stamp.sec = 0;
-//   gripper_grasp_msg.header.stamp.nsec = 0;
+    interpolator_pos(posStart, posEnd, PP_time, t);
 
-//   return gripper_grasp_msg;
-// }
+    // Now message has to be sent
+    traj_msg.header.stamp = ros::Time::now();
+
+    traj_msg.pose.position.x = traj.pos_des.x();
+    traj_msg.pose.position.y = traj.pos_des.y();
+    traj_msg.pose.position.z = traj.pos_des.z();
+
+    traj_msg.velocity.position.x = traj.vel_des.x();
+    traj_msg.velocity.position.y = traj.vel_des.y();
+    traj_msg.velocity.position.z = traj.vel_des.z();
+
+    traj_msg.acceleration.position.x = traj.acc_des.x();
+    traj_msg.acceleration.position.y = traj.acc_des.y();
+    traj_msg.acceleration.position.z = traj.acc_des.z();
+
+    // // Sending initial orientation
+    // traj_msg.pose.orientation.x = quatStart.X;
+    // traj_msg.pose.orientation.y = quatStart.Y;
+    // traj_msg.pose.orientation.z = quatStart.Z;
+    // traj_msg.pose.orientation.w = quatStart.W;
+
+    // Sending hand orientation
+    traj_msg.pose.orientation.x = curr_or.X;
+    traj_msg.pose.orientation.y = curr_or.Y;
+    traj_msg.pose.orientation.z = curr_or.Z;
+    traj_msg.pose.orientation.w = curr_or.W;
+
+    pub_cmd.publish(traj_msg);
+    waitForPos();
+  }
+}
+
+void rotate_EE(Quaternion quatStart, Quaternion quatEnd, Eigen::Vector3d curr_pos, ros::Publisher pub_cmd)
+{
+  ros::Time t_init;
+  double t;
+  ros::Rate loop_rate(100);
+  panda_controllers::DesiredTrajectory traj_msg;
+  t_init = ros::Time::now();
+  t = (ros::Time::now() - t_init).toSec();
+  while (t < PP_time)
+  {
+    Quaternion quatDes = Quaternion::Slerp(quatStart, quatEnd, t / PP_time);
+
+    // Now message has to be sent
+    traj_msg.header.stamp = ros::Time::now();
+
+    traj_msg.pose.position.x = curr_pos.x();
+    traj_msg.pose.position.y = curr_pos.y();
+    traj_msg.pose.position.z = curr_pos.z();
+
+    traj_msg.velocity.position.x = 0;
+    traj_msg.velocity.position.y = 0;
+    traj_msg.velocity.position.z = 0;
+
+    traj_msg.acceleration.position.x = 0;
+    traj_msg.acceleration.position.y = 0;
+    traj_msg.acceleration.position.z = 0;
+
+    traj_msg.pose.orientation.x = quatDes.X;
+    traj_msg.pose.orientation.y = quatDes.Y;
+    traj_msg.pose.orientation.z = quatDes.Z;
+    traj_msg.pose.orientation.w = quatDes.W;
+
+    pub_cmd.publish(traj_msg);
+    loop_rate.sleep();
+
+    t = (ros::Time::now() - t_init).toSec();
+  }
+}
+
+void waitSec(double sec)
+{
+  ros::Time t_init;
+  double t;
+  t_init = ros::Time::now();
+  t = (ros::Time::now() - t_init).toSec();
+  while (t < sec)
+  {
+    t = (ros::Time::now() - t_init).toSec();
+  }
+}
 
 int main(int argc, char **argv)
 {
@@ -540,11 +628,7 @@ int main(int argc, char **argv)
 
   // Obtaining initial position from topic
   cout << "Waiting for initial position" << endl;
-  while (!pos_received)
-  {
-    ros::spinOnce();
-    loop_rate.sleep();
-  }
+  waitForPos();
   // cout << "Orientation: " << orient.x << " "<< orient.y << " "<< orient.z << " "<< orient.w << endl;
   // From message
   pos_init = pos;
@@ -552,12 +636,7 @@ int main(int argc, char **argv)
   ros::Time t_init;
   double t;
 
-  pos_received = false;
-  while (!pos_received)
-  {
-    ros::spinOnce();
-    loop_rate.sleep();
-  }
+  waitForPos();
   // From message
   pos_init = pos;
 
@@ -620,61 +699,18 @@ int main(int argc, char **argv)
   }
   else
   {
-    t_init = ros::Time::now();
     hand_msg.data = 0.0;
     pub_sh.publish(hand_msg);
-    t = (ros::Time::now() - t_init).toSec();
-    while (t < 3)
-    {
-      t = (ros::Time::now() - t_init).toSec();
-    }
+    waitSec(3);
     cout << "Hand full open" << endl;
+
     Quaternion quatHand;
     quatHand.X = -0.6533;
     quatHand.Y = -0.2706;
     quatHand.Z = -0.2706;
     quatHand.W = 0.6533;
+    rotate_EE(quatStart, quatHand, pos_init, pub_cmd);
 
-
-    t_init = ros::Time::now();
-    t = (ros::Time::now() - t_init).toSec();
-    while (t < PP_time)
-    {
-      Quaternion quatDes = Quaternion::Slerp(quatStart, quatHand, t / PP_time);
-
-      // Now message has to be sent
-      traj_msg.header.stamp = ros::Time::now();
-
-      // traj_msg.pose.position.x = obj_init.x();
-      // traj_msg.pose.position.y = obj_init.y();
-      // traj_msg.pose.position.z = obj_init.z();
-      traj_msg.pose.position.x = pos_init.x();
-      traj_msg.pose.position.y = pos_init.y();
-      traj_msg.pose.position.z = pos_init.z();
-
-      traj_msg.velocity.position.x = 0;
-      traj_msg.velocity.position.y = 0;
-      traj_msg.velocity.position.z = 0;
-
-      traj_msg.acceleration.position.x = 0;
-      traj_msg.acceleration.position.y = 0;
-      traj_msg.acceleration.position.z = 0;
-
-      traj_msg.pose.orientation.x = quatDes.X;
-      traj_msg.pose.orientation.y = quatDes.Y;
-      traj_msg.pose.orientation.z = quatDes.Z;
-      traj_msg.pose.orientation.w = quatDes.W;
-
-      pub_cmd.publish(traj_msg);
-      loop_rate.sleep();
-
-      t = (ros::Time::now() - t_init).toSec();
-    }
-
-    // cout << "Initial position of the object (x,y,z): " << endl;
-    // cin >> obj_init.x();
-    // cin >> obj_init.y();
-    // cin >> obj_init.z();
     obj_init.x() = 0.38;
     obj_init.y() = -0.26;
     obj_init.z() = 0.484;
@@ -682,215 +718,35 @@ int main(int argc, char **argv)
     pos_target = obj_init;
     pos_target.z() = obj_init.z() + 0.13;
 
-    t_init = ros::Time::now();
-    while (!isClose(pos, pos_target, 0.01))
-    {
-      pos_received = false;
-      while (!pos_received)
-      {
-        ros::spinOnce();
-        loop_rate.sleep();
-      }
-      t = (ros::Time::now() - t_init).toSec();
-      if (t > PP_time)
-        t = PP_time;
-      interpolator_pos(pos_init, pos_target, PP_time, t);
+    waitForPos();
+    move_EE(pos, pos_target, quatHand, pub_cmd);
 
-      // Now message has to be sent
-      traj_msg.header.stamp = ros::Time::now();
-
-      // traj_msg.pose.position.x = obj_init.x();
-      // traj_msg.pose.position.y = obj_init.y();
-      // traj_msg.pose.position.z = obj_init.z();
-      traj_msg.pose.position.x = traj.pos_des.x();
-      traj_msg.pose.position.y = traj.pos_des.y();
-      traj_msg.pose.position.z = traj.pos_des.z();
-
-      traj_msg.velocity.position.x = traj.vel_des.x();
-      traj_msg.velocity.position.y = traj.vel_des.y();
-      traj_msg.velocity.position.z = traj.vel_des.z();
-
-      traj_msg.acceleration.position.x = traj.acc_des.x();
-      traj_msg.acceleration.position.y = traj.acc_des.y();
-      traj_msg.acceleration.position.z = traj.acc_des.z();
-
-      // // Sending initial orientation
-      // traj_msg.pose.orientation.x = quatStart.X;
-      // traj_msg.pose.orientation.y = quatStart.Y;
-      // traj_msg.pose.orientation.z = quatStart.Z;
-      // traj_msg.pose.orientation.w = quatStart.W;
-
-      // Sending hand orientation
-      traj_msg.pose.orientation.x = quatHand.X;
-      traj_msg.pose.orientation.y = quatHand.Y;
-      traj_msg.pose.orientation.z = quatHand.Z;
-      traj_msg.pose.orientation.w = quatHand.W;
-
-      pub_cmd.publish(traj_msg);
-      loop_rate.sleep();
-    }
-
-    t_init = ros::Time::now();
-    while (!isClose(pos, obj_init, 0.01))
-    {
-      pos_received = false;
-      while (!pos_received)
-      {
-        ros::spinOnce();
-        loop_rate.sleep();
-      }
-      t = (ros::Time::now() - t_init).toSec();
-      if (t > PP_time)
-        t = PP_time;
-      interpolator_pos(pos_target, obj_init, PP_time, t);
-
-      // Now message has to be sent
-      traj_msg.header.stamp = ros::Time::now();
-
-      // traj_msg.pose.position.x = obj_init.x();
-      // traj_msg.pose.position.y = obj_init.y();
-      // traj_msg.pose.position.z = obj_init.z();
-      traj_msg.pose.position.x = traj.pos_des.x();
-      traj_msg.pose.position.y = traj.pos_des.y();
-      traj_msg.pose.position.z = traj.pos_des.z();
-
-      traj_msg.velocity.position.x = traj.vel_des.x();
-      traj_msg.velocity.position.y = traj.vel_des.y();
-      traj_msg.velocity.position.z = traj.vel_des.z();
-
-      traj_msg.acceleration.position.x = traj.acc_des.x();
-      traj_msg.acceleration.position.y = traj.acc_des.y();
-      traj_msg.acceleration.position.z = traj.acc_des.z();
-
-      // // Sending initial orientation
-      // traj_msg.pose.orientation.x = quatStart.X;
-      // traj_msg.pose.orientation.y = quatStart.Y;
-      // traj_msg.pose.orientation.z = quatStart.Z;
-      // traj_msg.pose.orientation.w = quatStart.W;
-
-      // Sending hand orientation
-      traj_msg.pose.orientation.x = quatHand.X;
-      traj_msg.pose.orientation.y = quatHand.Y;
-      traj_msg.pose.orientation.z = quatHand.Z;
-      traj_msg.pose.orientation.w = quatHand.W;
-
-      pub_cmd.publish(traj_msg);
-      loop_rate.sleep();
-    }
-
+    waitForPos();
+    move_EE(pos, obj_init, quatHand, pub_cmd);
     cout << "Here comes the hand" << endl;
     // cout << "Waiting for enter to close" << endl;
     // while (cin.get() != '\n');
     hand_msg.data = 0.9;
     pub_sh.publish(hand_msg);
-
-    t_init = ros::Time::now();
-    t = (ros::Time::now() - t_init).toSec();
-    while (t < 3)
-    {
-      t = (ros::Time::now() - t_init).toSec();
-    }
+    cout << "Hand closing" << endl;
+    waitSec(3);
     cout << "Hand closed" << endl;
-    // while (cin.get() == '\n');
-    // cout << "Waiting for enter" << endl;
-    // while (cin.get() != '\n');
 
-    
     cout << "Going to q_bar position" << endl;
-    t_init = ros::Time::now();
-    while (!isClose(pos, pos_bar, 0.01))
-    {
-      pos_received = false;
-      while (!pos_received)
-      {
-        ros::spinOnce();
-        loop_rate.sleep();
-      }
+    waitForPos();
+    move_EE(pos, pos_bar, quatHand, pub_cmd);
 
-      t = (ros::Time::now() - t_init).toSec();
-      if (t > PP_time)
-        t = PP_time;
-      interpolator_pos(obj_init, pos_bar, PP_time, t);
-
-      // Now message has to be sent
-      traj_msg.header.stamp = ros::Time::now();
-
-      // traj_msg.pose.position.x = pos_bar.x();
-      // traj_msg.pose.position.y = pos_bar.y();
-      // traj_msg.pose.position.z = pos_bar.z();
-
-      traj_msg.pose.position.x = traj.pos_des.x();
-      traj_msg.pose.position.y = traj.pos_des.y();
-      traj_msg.pose.position.z = traj.pos_des.z();
-
-      traj_msg.velocity.position.x = traj.vel_des.x();
-      traj_msg.velocity.position.y = traj.vel_des.y();
-      traj_msg.velocity.position.z = traj.vel_des.z();
-
-      traj_msg.acceleration.position.x = traj.acc_des.x();
-      traj_msg.acceleration.position.y = traj.acc_des.y();
-      traj_msg.acceleration.position.z = traj.acc_des.z();
-
-      // Sending initial orientation
-      traj_msg.pose.orientation.x = quatHand.X;
-      traj_msg.pose.orientation.y = quatHand.Y;
-      traj_msg.pose.orientation.z = quatHand.Z;
-      traj_msg.pose.orientation.w = quatHand.W;
-
-      pub_cmd.publish(traj_msg);
-      // grip_cmd.publish(gripper_msg);
-      loop_rate.sleep();
-    }
-
+    // Rotating hand in throw orientation
     quatStart = quatHand;
-    quatHand.X = 0.92388;
-    quatHand.Y = 0.0;
-    quatHand.Z = 0.38268;
-    quatHand.W = 0.0;
-    t_init = ros::Time::now();
-    t = (ros::Time::now() - t_init).toSec();
-    while (t < PP_time)
-    {
-      Quaternion quatDes = Quaternion::Slerp(quatStart, quatHand, t / PP_time);
+    quatHand.X = -0.15907;
+    quatHand.Y = 0.082477;
+    quatHand.Z = 0.46932;
+    quatHand.W = 0.86466;
 
-      // Now message has to be sent
-      traj_msg.header.stamp = ros::Time::now();
+    waitForPos();
+    rotate_EE(quatStart, quatHand, pos, pub_cmd);
 
-      // traj_msg.pose.position.x = obj_init.x();
-      // traj_msg.pose.position.y = obj_init.y();
-      // traj_msg.pose.position.z = obj_init.z();
-      traj_msg.pose.position.x = pos_init.x();
-      traj_msg.pose.position.y = pos_init.y();
-      traj_msg.pose.position.z = pos_init.z();
-
-      traj_msg.velocity.position.x = 0;
-      traj_msg.velocity.position.y = 0;
-      traj_msg.velocity.position.z = 0;
-
-      traj_msg.acceleration.position.x = 0;
-      traj_msg.acceleration.position.y = 0;
-      traj_msg.acceleration.position.z = 0;
-
-      traj_msg.pose.orientation.x = quatDes.X;
-      traj_msg.pose.orientation.y = quatDes.Y;
-      traj_msg.pose.orientation.z = quatDes.Z;
-      traj_msg.pose.orientation.w = quatDes.W;
-
-      pub_cmd.publish(traj_msg);
-      loop_rate.sleep();
-
-      t = (ros::Time::now() - t_init).toSec();
-    }
-    
-    
-    
-    
-    pos_received = false;
-    while (!pos_received)
-    {
-      ros::spinOnce();
-      loop_rate.sleep();
-    }
+    waitForPos();
     pos_init = pos;
     cout << "Final position of the object (x,y,z): " << endl;
     cin >> pos_f.x();
@@ -899,13 +755,13 @@ int main(int argc, char **argv)
     // pos_f.x() = -0.5;
     // pos_f.y() = 0.5;
     // pos_f.z() = 0;0
-    double anticipo;
+    double time_adv;
     bool fsHand = true;
 
     cout << "Time for minJerk: ";
     cin >> tThrow;
-    cout << "Anticipo comando mano ";
-    cin >> anticipo;
+    cout << "Hand cmd time advance ";
+    cin >> time_adv;
     th = 0.12; // Time to stop
     tEnd = tThrow + th;
 
@@ -956,8 +812,6 @@ int main(int argc, char **argv)
          << TR.xThrow << "\nWith velocity:\n"
          << TR.vThrow << "\nAnd angle: " << TR.theta << endl;
 
-    while (cin.get() != '\n');
-
     // Orientating hand
     Quaternion quatThrow = Quaternion(1, 0, 0, 0);
     // quatThrow.X =  0.92388;
@@ -965,51 +819,14 @@ int main(int argc, char **argv)
     // quatThrow.Z = 0.38268;
     // quatThrow.W = 0.0;
     quatThrow = quatHand;
-    t_init = ros::Time::now();
-    t = (ros::Time::now() - t_init).toSec();
-    // while (t < PP_time)
-    // {
-    //   Quaternion quatDes = Quaternion::Slerp(quatHand, quatThrow, t/PP_time);
 
-    //   // Now message has to be sent
-    //   traj_msg.header.stamp = ros::Time::now();
-
-    //   // traj_msg.pose.position.x = obj_init.x();
-    //   // traj_msg.pose.position.y = obj_init.y();
-    //   // traj_msg.pose.position.z = obj_init.z();
-    //   traj_msg.pose.position.x = pos_init.x();
-    //   traj_msg.pose.position.y = pos_init.y();
-    //   traj_msg.pose.position.z = pos_init.z();
-
-    //   traj_msg.velocity.position.x = 0;
-    //   traj_msg.velocity.position.y = 0;
-    //   traj_msg.velocity.position.z = 0;
-
-    //   traj_msg.acceleration.position.x = 0;
-    //   traj_msg.acceleration.position.y = 0;
-    //   traj_msg.acceleration.position.z = 0;
-
-    //   traj_msg.pose.orientation.x = quatDes.X;
-    //   traj_msg.pose.orientation.y = quatDes.Y;
-    //   traj_msg.pose.orientation.z = quatDes.Z;
-    //   traj_msg.pose.orientation.w = quatDes.W;
-
-    //   pub_cmd.publish(traj_msg);
-    //   loop_rate.sleep();
-
-    //   t = (ros::Time::now() - t_init).toSec();
-    // }
-
-    // cout << "Waiting for enter to start throw.";
-    // while (cin.get() != '\n');
-    // while (cin.get() != '\n');
     hand_msg.data = 0.0;
     t_init = ros::Time::now();
     t = (ros::Time::now() - t_init).toSec();
     while (t <= tEnd)
     {
       // cout << "Current time: " << t << endl;
-      if (t >= (tThrow - anticipo) && fsHand)
+      if (t >= (tThrow - time_adv) && fsHand)
       {
         pub_sh.publish(hand_msg);
         fsHand = false;
@@ -1075,9 +892,10 @@ int main(int argc, char **argv)
           // traj.vel_des.x() = throwValues.vThrow.x();
           // traj.vel_des.y() = throwValues.vThrow.y();
           // traj.vel_des.z() = throwValues.vThrow.z() - G * (t - tThrow);
-          interpolator_posSpeed(throwValues.xThrow,throwValues.vThrow,th,t-tThrow);
-          cout << "Braking:\n" << traj.pos_des << endl;
-          cout << "Braking time: " << t-tThrow << endl;
+          interpolator_posSpeed(throwValues.xThrow, throwValues.vThrow, th, t - tThrow);
+          // cout << "Braking:\n"
+          //      << traj.pos_des << endl;
+          // cout << "Braking time: " << t - tThrow << endl;
         }
       }
 
@@ -1108,33 +926,11 @@ int main(int argc, char **argv)
       nM++;
 
       loop_rate.sleep();
-      
+
       t = (ros::Time::now() - t_init).toSec();
       // cout << "init time: " << t_init << endl;
       // cout << "Current time: " << ros::Time::now() << endl;
       // cout << "End while time: " << t << endl;
     }
-
-    // // Sending last message: last position with zero velocity and acceleration
-    // traj_msg.header.stamp = ros::Time::now();
-
-    // traj_msg.pose.position.x = traj.pos_des.x();
-    // traj_msg.pose.position.y = traj.pos_des.y();
-    // traj_msg.pose.position.z = traj.pos_des.z();
-
-    // traj_msg.velocity.position.x = 0.0;
-    // traj_msg.velocity.position.y = 0.0;
-    // traj_msg.velocity.position.z = 0.0;
-
-    // traj_msg.acceleration.position.x = 0.0;
-    // traj_msg.acceleration.position.y = 0.0;
-    // traj_msg.acceleration.position.z = 0.0;
-
-    // traj_msg.pose.orientation.x = traj.or_des.X;
-    // traj_msg.pose.orientation.y = traj.or_des.Y;
-    // traj_msg.pose.orientation.z = traj.or_des.Z;
-    // traj_msg.pose.orientation.w = traj.or_des.W;
-
-    // pub_cmd.publish(traj_msg);
   }
 }
