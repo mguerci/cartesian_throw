@@ -46,6 +46,7 @@
 
 #define G 9.8182
 #define PP_time 5 // Time for pick & place task
+#define RATE_FREQ 500
 
 using namespace std;
 
@@ -425,7 +426,7 @@ Eigen::Matrix<double, 3, 3> getRM(double angle, char ax)
 
 void waitForPos()
 {
-  ros::Rate loop_rate(100);
+  ros::Rate loop_rate(RATE_FREQ);
   pos_received = false;
   while (!pos_received)
   {
@@ -438,7 +439,7 @@ void move_EE(Eigen::Vector3d posStart, Eigen::Vector3d posEnd, Quaternion curr_o
 {
   ros::Time t_init;
   double t, tr;
-  ros::Rate loop_rate(100);
+  ros::Rate loop_rate(RATE_FREQ);
   panda_controllers::DesiredTrajectory traj_msg;
   t_init = ros::Time::now();
   waitForPos();
@@ -494,7 +495,7 @@ void rotate_EE(Quaternion quatStart, Quaternion quatEnd, Eigen::Vector3d curr_po
 {
   ros::Time t_init;
   double t;
-  ros::Rate loop_rate(100);
+  ros::Rate loop_rate(RATE_FREQ);
   panda_controllers::DesiredTrajectory traj_msg;
   t_init = ros::Time::now();
   t = (ros::Time::now() - t_init).toSec();
@@ -543,6 +544,7 @@ void waitSec(double sec)
 
 int main(int argc, char **argv)
 {
+  
   // New code
   ros::init(argc, argv, "trajectory");
 
@@ -627,6 +629,7 @@ int main(int argc, char **argv)
   // }
 
   // Obtaining initial position from topic
+  // waitSec(10);
   cout << "Waiting for initial position" << endl;
   waitForPos();
   // cout << "Orientation: " << orient.x << " "<< orient.y << " "<< orient.z << " "<< orient.w << endl;
@@ -748,20 +751,25 @@ int main(int argc, char **argv)
 
     waitForPos();
     pos_init = pos;
-    cout << "Final position of the object (x,y,z): " << endl;
-    cin >> pos_f.x();
-    cin >> pos_f.y();
-    cin >> pos_f.z();
-    // pos_f.x() = -0.5;
-    // pos_f.y() = 0.5;
-    // pos_f.z() = 0;0
-    double time_adv;
+    // cout << "Final position of the object (x,y,z): " << endl;
+    // cin >> pos_f.x();
+    // cin >> pos_f.y();
+    // cin >> pos_f.z();
+    pos_f.x() = 0.2;
+    pos_f.y() = 1.6;
+    pos_f.z() = 0;
+    double time_adv, scale;
     bool fsHand = true;
 
-    cout << "Time for minJerk: ";
-    cin >> tThrow;
-    cout << "Hand cmd time advance ";
-    cin >> time_adv;
+    // cout << "Time for minJerk: ";
+    // cin >> tThrow;
+    // cout << "Hand cmd time advance ";
+    // cin >> time_adv;
+    cout << "Scale factor: ";
+    cin >> scale;
+    // scale = 3;
+    tThrow = 0.5*scale;
+    time_adv = 0.1;
     th = 0.12; // Time to stop
     tEnd = tThrow + th;
 
@@ -821,6 +829,7 @@ int main(int argc, char **argv)
     quatThrow = quatHand;
 
     hand_msg.data = 0.0;
+    waitSec(3);
     t_init = ros::Time::now();
     t = (ros::Time::now() - t_init).toSec();
     while (t <= tEnd)
@@ -834,17 +843,17 @@ int main(int argc, char **argv)
 
       if (t < tThrow) // Minimum jerk phase
       {
-        traj.pos_des.x() = pos_init.x() + P(0, 0) * pow(t, 3) + P(1, 0) * pow(t, 4) + P(2, 0) * pow(t, 5);
-        traj.pos_des.y() = pos_init.y() + P(0, 1) * pow(t, 3) + P(1, 1) * pow(t, 4) + P(2, 1) * pow(t, 5);
-        traj.pos_des.z() = pos_init.z() + P(0, 2) * pow(t, 3) + P(1, 2) * pow(t, 4) + P(2, 2) * pow(t, 5);
+        traj.pos_des.x() = pos_init.x() + P(0, 0) * pow(t/scale, 3) + P(1, 0) * pow(t/scale, 4) + P(2, 0) * pow(t/scale, 5);
+        traj.pos_des.y() = pos_init.y() + P(0, 1) * pow(t/scale, 3) + P(1, 1) * pow(t/scale, 4) + P(2, 1) * pow(t/scale, 5);
+        traj.pos_des.z() = pos_init.z() + P(0, 2) * pow(t/scale, 3) + P(1, 2) * pow(t/scale, 4) + P(2, 2) * pow(t/scale, 5);
 
-        traj.vel_des.x() = 3 * P(0, 0) * pow(t, 2) + 4 * P(1, 0) * pow(t, 3) + 5 * P(2, 0) * pow(t, 4);
-        traj.vel_des.y() = 3 * P(0, 1) * pow(t, 2) + 4 * P(1, 1) * pow(t, 3) + 5 * P(2, 1) * pow(t, 4);
-        traj.vel_des.z() = 3 * P(0, 2) * pow(t, 2) + 4 * P(1, 2) * pow(t, 3) + 5 * P(2, 2) * pow(t, 4);
+        traj.vel_des.x() = (3 * P(0, 0) * pow(t/scale, 2) + 4 * P(1, 0) * pow(t/scale, 3) + 5 * P(2, 0) * pow(t/scale, 4))/scale;
+        traj.vel_des.y() = (3 * P(0, 1) * pow(t/scale, 2) + 4 * P(1, 1) * pow(t/scale, 3) + 5 * P(2, 1) * pow(t/scale, 4))/scale;
+        traj.vel_des.z() = (3 * P(0, 2) * pow(t/scale, 2) + 4 * P(1, 2) * pow(t/scale, 3) + 5 * P(2, 2) * pow(t/scale, 4))/scale;
 
-        traj.acc_des.x() = 6 * P(0, 0) * pow(t, 1) + 12 * P(1, 0) * pow(t, 2) + 20 * P(2, 0) * pow(t, 3);
-        traj.acc_des.y() = 6 * P(0, 1) * pow(t, 1) + 12 * P(1, 1) * pow(t, 2) + 20 * P(2, 1) * pow(t, 3);
-        traj.acc_des.z() = 6 * P(0, 2) * pow(t, 1) + 12 * P(1, 2) * pow(t, 2) + 20 * P(2, 2) * pow(t, 3);
+        traj.acc_des.x() = (6 * P(0, 0) * pow(t/scale, 1) + 12 * P(1, 0) * pow(t/scale, 2) + 20 * P(2, 0) * pow(t/scale, 3))/pow(scale,2);
+        traj.acc_des.y() = (6 * P(0, 1) * pow(t/scale, 1) + 12 * P(1, 1) * pow(t/scale, 2) + 20 * P(2, 1) * pow(t/scale, 3))/pow(scale,2);
+        traj.acc_des.z() = (6 * P(0, 2) * pow(t/scale, 1) + 12 * P(1, 2) * pow(t/scale, 2) + 20 * P(2, 2) * pow(t/scale, 3))/pow(scale,2);
 
         // Quaternion quatDes = Quaternion::Slerp(quatHand, quatThrow, t / tThrow);
         // traj.or_des = quatDes;
@@ -865,13 +874,14 @@ int main(int argc, char **argv)
         {
           // pub_sh.publish(hand_msg);
           firstSwitch = false;
-          throwValues.xThrow.x() = pos_init.x() + P(0, 0) * pow(t, 3) + P(1, 0) * pow(t, 4) + P(2, 0) * pow(t, 5);
-          throwValues.xThrow.y() = pos_init.y() + P(0, 1) * pow(t, 3) + P(1, 1) * pow(t, 4) + P(2, 1) * pow(t, 5);
-          throwValues.xThrow.z() = pos_init.z() + P(0, 2) * pow(t, 3) + P(1, 2) * pow(t, 4) + P(2, 2) * pow(t, 5);
+        
+          throwValues.xThrow.x() = pos_init.x() + P(0, 0) * pow(t/scale, 3) + P(1, 0) * pow(t/scale, 4) + P(2, 0) * pow(t/scale, 5);
+          throwValues.xThrow.y() = pos_init.y() + P(0, 1) * pow(t/scale, 3) + P(1, 1) * pow(t/scale, 4) + P(2, 1) * pow(t/scale, 5);
+          throwValues.xThrow.z() = pos_init.z() + P(0, 2) * pow(t/scale, 3) + P(1, 2) * pow(t/scale, 4) + P(2, 2) * pow(t/scale, 5);
 
-          throwValues.vThrow.x() = 3 * P(0, 0) * pow(t, 2) + 4 * P(1, 0) * pow(t, 3) + 5 * P(2, 0) * pow(t, 4);
-          throwValues.vThrow.y() = 3 * P(0, 1) * pow(t, 2) + 4 * P(1, 1) * pow(t, 3) + 5 * P(2, 1) * pow(t, 4);
-          throwValues.vThrow.z() = 3 * P(0, 2) * pow(t, 2) + 4 * P(1, 2) * pow(t, 3) + 5 * P(2, 2) * pow(t, 4);
+          throwValues.vThrow.x() = (3 * P(0, 0) * pow(t/scale, 2) + 4 * P(1, 0) * pow(t/scale, 3) + 5 * P(2, 0) * pow(t/scale, 4))/scale;
+          throwValues.vThrow.y() = (3 * P(0, 1) * pow(t/scale, 2) + 4 * P(1, 1) * pow(t/scale, 3) + 5 * P(2, 1) * pow(t/scale, 4))/scale;
+          throwValues.vThrow.z() = (3 * P(0, 2) * pow(t/scale, 2) + 4 * P(1, 2) * pow(t/scale, 3) + 5 * P(2, 2) * pow(t/scale, 4))/scale;
 
           traj.pos_des.x() = throwValues.xThrow.x();
           traj.pos_des.y() = throwValues.xThrow.y();
@@ -930,7 +940,7 @@ int main(int argc, char **argv)
       t = (ros::Time::now() - t_init).toSec();
       // cout << "init time: " << t_init << endl;
       // cout << "Current time: " << ros::Time::now() << endl;
-      // cout << "End while time: " << t << endl;
+      cout << "End while time: " << t << endl;
     }
   }
 }
