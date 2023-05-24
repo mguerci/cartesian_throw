@@ -21,7 +21,6 @@
 
 #include <geometry_msgs/PoseStamped.h>
 
-
 #include <panda_controllers/DesiredTrajectory.h>
 // #include <panda_controllers/DesiredTrajectory.h>
 // #include <panda_controllers/cubeRef.h>
@@ -47,6 +46,8 @@
 #define G 9.8182
 #define PP_time 5 // Time for pick & place task
 #define RATE_FREQ 500
+#define MAX_V 1.7
+#define MAX_A 13
 
 using namespace std;
 
@@ -544,7 +545,7 @@ void waitSec(double sec)
 
 int main(int argc, char **argv)
 {
-  
+
   // New code
   ros::init(argc, argv, "trajectory");
 
@@ -587,13 +588,13 @@ int main(int argc, char **argv)
   // orient_reset.z = 0;
   // orient_reset.w = 0;
 
-  pos_bar.x() = 0.4;
-  pos_bar.y() = 0;
+  pos_bar.x() = 0.45;
+  pos_bar.y() = 0.2;
   pos_bar.z() = 0.7;
   throwData TR;
   int n, m;
   double **mat = NULL;
-  double tThrow, tEnd;
+  double tJerk, tThrow, tEnd;
   double th;
   // node_handle.getParam("th", th);
   // cout << th << endl;
@@ -702,6 +703,7 @@ int main(int argc, char **argv)
   }
   else
   {
+    // waitSec(10);
     hand_msg.data = 0.0;
     pub_sh.publish(hand_msg);
     waitSec(3);
@@ -755,22 +757,26 @@ int main(int argc, char **argv)
     // cin >> pos_f.x();
     // cin >> pos_f.y();
     // cin >> pos_f.z();
-    pos_f.x() = 0.2;
+    pos_f.x() = 0.4;
     pos_f.y() = 1.6;
     pos_f.z() = 0;
     double time_adv, scale;
     bool fsHand = true;
+    double modV, modA;
 
     // cout << "Time for minJerk: ";
-    // cin >> tThrow;
+    // cin >> tJerk;
     // cout << "Hand cmd time advance ";
     // cin >> time_adv;
     cout << "Scale factor: ";
     cin >> scale;
-    // scale = 3;
-    tThrow = 0.5*scale;
-    time_adv = 0.1;
-    th = 0.12; // Time to stop
+    // scale = 2.3;
+    
+    tJerk = 0.2;
+    tThrow = tJerk * scale;
+    time_adv = 0.55;
+    // th = 0.12; // Time to stop
+    th = 0.08;
     tEnd = tThrow + th;
 
     TR = computeThrow(pos_f, mat, n, m, marg);
@@ -797,9 +803,9 @@ int main(int argc, char **argv)
 
     // // Computing parameters
     Eigen::Matrix<double, 3, 3> A;
-    A << pow(tThrow, 3), pow(tThrow, 4), pow(tThrow, 5),
-        3 * pow(tThrow, 2), 4 * pow(tThrow, 3), 5 * pow(tThrow, 4),
-        6 * pow(tThrow, 1), 12 * pow(tThrow, 2), 20 * pow(tThrow, 3);
+    A << pow(tJerk, 3), pow(tJerk, 4), pow(tJerk, 5),
+        3 * pow(tJerk, 2), 4 * pow(tJerk, 3), 5 * pow(tJerk, 4),
+        6 * pow(tJerk, 1), 12 * pow(tJerk, 2), 20 * pow(tJerk, 3);
 
     Eigen::Matrix<double, 3, 3> P; // Min jerk parameters matrix
     Eigen::Matrix<double, 3, 1> V;
@@ -818,7 +824,7 @@ int main(int argc, char **argv)
 
     cout << "Throw position computed:\n"
          << TR.xThrow << "\nWith velocity:\n"
-         << TR.vThrow << "\nAnd angle: " << TR.theta << endl;
+         << TR.vThrow << endl;
 
     // Orientating hand
     Quaternion quatThrow = Quaternion(1, 0, 0, 0);
@@ -841,19 +847,19 @@ int main(int argc, char **argv)
         fsHand = false;
       }
 
-      if (t < tThrow) // Minimum jerk phase
+      if (t < tThrow) // Minimum jerk phase (tThrow already scaled)
       {
-        traj.pos_des.x() = pos_init.x() + P(0, 0) * pow(t/scale, 3) + P(1, 0) * pow(t/scale, 4) + P(2, 0) * pow(t/scale, 5);
-        traj.pos_des.y() = pos_init.y() + P(0, 1) * pow(t/scale, 3) + P(1, 1) * pow(t/scale, 4) + P(2, 1) * pow(t/scale, 5);
-        traj.pos_des.z() = pos_init.z() + P(0, 2) * pow(t/scale, 3) + P(1, 2) * pow(t/scale, 4) + P(2, 2) * pow(t/scale, 5);
+        traj.pos_des.x() = pos_init.x() + P(0, 0) * pow(t / scale, 3) + P(1, 0) * pow(t / scale, 4) + P(2, 0) * pow(t / scale, 5);
+        traj.pos_des.y() = pos_init.y() + P(0, 1) * pow(t / scale, 3) + P(1, 1) * pow(t / scale, 4) + P(2, 1) * pow(t / scale, 5);
+        traj.pos_des.z() = pos_init.z() + P(0, 2) * pow(t / scale, 3) + P(1, 2) * pow(t / scale, 4) + P(2, 2) * pow(t / scale, 5);
 
-        traj.vel_des.x() = (3 * P(0, 0) * pow(t/scale, 2) + 4 * P(1, 0) * pow(t/scale, 3) + 5 * P(2, 0) * pow(t/scale, 4))/scale;
-        traj.vel_des.y() = (3 * P(0, 1) * pow(t/scale, 2) + 4 * P(1, 1) * pow(t/scale, 3) + 5 * P(2, 1) * pow(t/scale, 4))/scale;
-        traj.vel_des.z() = (3 * P(0, 2) * pow(t/scale, 2) + 4 * P(1, 2) * pow(t/scale, 3) + 5 * P(2, 2) * pow(t/scale, 4))/scale;
+        traj.vel_des.x() = (3 * P(0, 0) * pow(t / scale, 2) + 4 * P(1, 0) * pow(t / scale, 3) + 5 * P(2, 0) * pow(t / scale, 4)) / scale;
+        traj.vel_des.y() = (3 * P(0, 1) * pow(t / scale, 2) + 4 * P(1, 1) * pow(t / scale, 3) + 5 * P(2, 1) * pow(t / scale, 4)) / scale;
+        traj.vel_des.z() = (3 * P(0, 2) * pow(t / scale, 2) + 4 * P(1, 2) * pow(t / scale, 3) + 5 * P(2, 2) * pow(t / scale, 4)) / scale;
 
-        traj.acc_des.x() = (6 * P(0, 0) * pow(t/scale, 1) + 12 * P(1, 0) * pow(t/scale, 2) + 20 * P(2, 0) * pow(t/scale, 3))/pow(scale,2);
-        traj.acc_des.y() = (6 * P(0, 1) * pow(t/scale, 1) + 12 * P(1, 1) * pow(t/scale, 2) + 20 * P(2, 1) * pow(t/scale, 3))/pow(scale,2);
-        traj.acc_des.z() = (6 * P(0, 2) * pow(t/scale, 1) + 12 * P(1, 2) * pow(t/scale, 2) + 20 * P(2, 2) * pow(t/scale, 3))/pow(scale,2);
+        traj.acc_des.x() = (6 * P(0, 0) * pow(t / scale, 1) + 12 * P(1, 0) * pow(t / scale, 2) + 20 * P(2, 0) * pow(t / scale, 3)) / pow(scale, 2);
+        traj.acc_des.y() = (6 * P(0, 1) * pow(t / scale, 1) + 12 * P(1, 1) * pow(t / scale, 2) + 20 * P(2, 1) * pow(t / scale, 3)) / pow(scale, 2);
+        traj.acc_des.z() = (6 * P(0, 2) * pow(t / scale, 1) + 12 * P(1, 2) * pow(t / scale, 2) + 20 * P(2, 2) * pow(t / scale, 3)) / pow(scale, 2);
 
         // Quaternion quatDes = Quaternion::Slerp(quatHand, quatThrow, t / tThrow);
         // traj.or_des = quatDes;
@@ -874,14 +880,14 @@ int main(int argc, char **argv)
         {
           // pub_sh.publish(hand_msg);
           firstSwitch = false;
-        
-          throwValues.xThrow.x() = pos_init.x() + P(0, 0) * pow(t/scale, 3) + P(1, 0) * pow(t/scale, 4) + P(2, 0) * pow(t/scale, 5);
-          throwValues.xThrow.y() = pos_init.y() + P(0, 1) * pow(t/scale, 3) + P(1, 1) * pow(t/scale, 4) + P(2, 1) * pow(t/scale, 5);
-          throwValues.xThrow.z() = pos_init.z() + P(0, 2) * pow(t/scale, 3) + P(1, 2) * pow(t/scale, 4) + P(2, 2) * pow(t/scale, 5);
 
-          throwValues.vThrow.x() = (3 * P(0, 0) * pow(t/scale, 2) + 4 * P(1, 0) * pow(t/scale, 3) + 5 * P(2, 0) * pow(t/scale, 4))/scale;
-          throwValues.vThrow.y() = (3 * P(0, 1) * pow(t/scale, 2) + 4 * P(1, 1) * pow(t/scale, 3) + 5 * P(2, 1) * pow(t/scale, 4))/scale;
-          throwValues.vThrow.z() = (3 * P(0, 2) * pow(t/scale, 2) + 4 * P(1, 2) * pow(t/scale, 3) + 5 * P(2, 2) * pow(t/scale, 4))/scale;
+          throwValues.xThrow.x() = pos_init.x() + P(0, 0) * pow(t / scale, 3) + P(1, 0) * pow(t / scale, 4) + P(2, 0) * pow(t / scale, 5);
+          throwValues.xThrow.y() = pos_init.y() + P(0, 1) * pow(t / scale, 3) + P(1, 1) * pow(t / scale, 4) + P(2, 1) * pow(t / scale, 5);
+          throwValues.xThrow.z() = pos_init.z() + P(0, 2) * pow(t / scale, 3) + P(1, 2) * pow(t / scale, 4) + P(2, 2) * pow(t / scale, 5);
+
+          throwValues.vThrow.x() = (3 * P(0, 0) * pow(t / scale, 2) + 4 * P(1, 0) * pow(t / scale, 3) + 5 * P(2, 0) * pow(t / scale, 4)) / scale;
+          throwValues.vThrow.y() = (3 * P(0, 1) * pow(t / scale, 2) + 4 * P(1, 1) * pow(t / scale, 3) + 5 * P(2, 1) * pow(t / scale, 4)) / scale;
+          throwValues.vThrow.z() = (3 * P(0, 2) * pow(t / scale, 2) + 4 * P(1, 2) * pow(t / scale, 3) + 5 * P(2, 2) * pow(t / scale, 4)) / scale;
 
           traj.pos_des.x() = throwValues.xThrow.x();
           traj.pos_des.y() = throwValues.xThrow.y();
@@ -930,9 +936,29 @@ int main(int argc, char **argv)
       traj_msg.pose.orientation.w = traj.or_des.W;
 
       pub_cmd.publish(traj_msg);
+
+      // Verifing limits
+      modV = sqrt(pow(traj.vel_des.x(), 2) + pow(traj.vel_des.y(), 2) + pow(traj.vel_des.z(), 2));
+      if (modV > MAX_V)
+      {
+        cout << "Speed abs: " << modV << " --> saturating at time: " << t << endl;
+      }
+      else
+      {
+        cout << "Speed abs: " << modV ;
+      }
+
+      modA = sqrt(pow(traj.acc_des.x(), 2) + pow(traj.acc_des.y(), 2) + pow(traj.acc_des.z(), 2));
+      if (modA > MAX_A)
+      {
+        cout << "Acceleration abs: " << modA << " --> saturating at time: " << t  << endl;
+      }
       // cout << "Trajectory message " << nM << " sent:\n" << traj_msg.pose.position << endl;
       // cout << "Trajectory or message " << nM << " sent:\nx: " << traj_msg.pose.orientation.x << "\ny: " << traj_msg.pose.orientation.y << " \nz:" << traj_msg.pose.orientation.z << " \nw:" << traj_msg.pose.orientation.w << endl;
-
+      else
+      {
+        cout << "  Acceleration abs: " << modA << endl;
+      }
       nM++;
 
       loop_rate.sleep();
@@ -940,7 +966,7 @@ int main(int argc, char **argv)
       t = (ros::Time::now() - t_init).toSec();
       // cout << "init time: " << t_init << endl;
       // cout << "Current time: " << ros::Time::now() << endl;
-      cout << "End while time: " << t << endl;
+      // cout << "End while time: " << t << endl;
     }
   }
 }
