@@ -61,12 +61,12 @@ struct throwData
   double theta;
 };
 
-struct angleData
-{
-  double theta;
-  double v;
-  bool found;
-};
+// struct angleData
+// {
+//   double theta;
+//   double v;
+//   bool found;
+// };
 
 struct traj_struct
 {
@@ -148,123 +148,203 @@ int sign(double val)
   return 0;
 }
 
-angleData computeAngle(double l, double zTh, double g, double xTh, double xGr)
+// angleData computeAngle(double l, double zTh, double g, double xTh, double xGr)
+// {
+//   double delta_z, delta_x, F;
+//   double vMin = 100000000;
+//   double theta_min, theta_start = M_PI_4;
+//   double tr = 0.01;
+//   angleData result;
+//   result.found = false;
+
+//   delta_z = zTh + l;
+//   delta_x = xGr - xTh;
+
+//   for (double theta = -M_PI / 3; theta <= M_PI / 3; theta += 0.1)
+//   {
+//     for (double v = 0.1; v <= 5; v += 0.05)
+//     {
+//       F = -delta_x + ((pow(v, 2)) / (2 * g)) * (sin(2 * theta) + 2 * cos(theta) * sqrt((pow(sin(theta), 2)) + (2 * g * delta_z) / (pow(v, 2))));
+//       if (abs(F) <= tr)
+//       {
+//         if (abs(v) < vMin)
+//         {
+//           result.found = true;
+//           result.theta = theta;
+//           result.v = v;
+//         }
+//       }
+//     }
+//   }
+//   return result;
+// }
+
+// throwData computeThrow(Eigen::Vector3d xGround, double **mat, int n, int m, double marg)
+// {
+//   double vMin = 100000000, beta, dTh, zTh, Dx, Dz, v, tFl, l;
+//   Eigen::Vector3d xThrow;
+//   xThrow.x() = 0;
+//   xThrow.y() = 0;
+//   xThrow.z() = 0;
+//   Eigen::Vector3d vThrow;
+//   vThrow.x() = 0;
+//   vThrow.y() = 0;
+//   vThrow.z() = 0;
+//   Eigen::Vector3d aThrow;
+//   aThrow.x() = 0;
+//   aThrow.y() = 0;
+//   aThrow.z() = 0;
+//   bool found = false;
+//   throwData result;
+//   angleData ad;
+
+//   char temp;
+
+//   // cout << "Computing throw data for X_ground = \n"  << xGround << endl;
+//   // cin >> temp;
+//   // xGround ok
+//   l = -xGround.z();
+//   beta = atan2(xGround.y(), xGround.x());
+
+//   // for (int i = 0; i < m; i++)
+//   // {
+//   //   zTh = mat[1][i];
+//   //   if (zTh>=0.5)
+//   //   {
+//   //       dTh = mat[0][i];
+//   //       // cout << "X = " << dTh << " ; Z = " << zTh << endl;
+//   //       // while (cin.get() != '\n');
+
+//   //       Dx = sqrt(pow(xGround.x(), 2) + pow(xGround.y(), 2)) + marg;
+//   //       ad = computeAngle(l, zTh, G, dTh, Dx);
+//   //       if(ad.found)
+//   //       {
+//   //         if(ad.v < vMin)
+//   //         {
+//   //           // cout << "Found result\n" << endl;
+//   //           // cout << "X = " << dTh << " ; Z = " << zTh << " ; V = " << ad.v << endl;
+//   //           // cin >> carlo;
+//   //           vMin = ad.v;
+//   //           result.theta = ad.theta;
+//   //           result.found = true;
+//   //           xThrow.x() = (dTh - marg * sign(dTh)) * cos(beta);
+//   //           xThrow.y() = (dTh - marg * sign(dTh)) * sin(beta);
+//   //           xThrow.z() = zTh;
+//   //           vThrow.x() = vMin * cos(beta) * cos(ad.theta);
+//   //           vThrow.y() = vMin * sin(beta) * cos(ad.theta);
+//   //           vThrow.z() = vMin * sin(ad.theta);
+//   //         }
+//   //       }
+
+//   //   }
+
+//   // }
+
+//   for (int i = 0; i < m; i++)
+//   {
+//     zTh = mat[1][i];
+//     if (zTh >= 0.5)
+//     {
+//       dTh = mat[0][i];
+//       Dx = sqrt(pow(xGround.x(), 2) + pow(xGround.y(), 2)) - dTh + marg;
+//       Dz = xGround.z() - zTh;
+//       v = sqrt((pow(Dx, 2) * G) / (2 * (Dx - Dz)));
+
+//       if (!isnan(v) && v < vMin)
+//       {
+//         tFl = Dx / v;
+//         found = true;
+//         vMin = v;
+//         xThrow.x() = (dTh - marg * sign(dTh)) * cos(beta);
+//         xThrow.y() = (dTh - marg * sign(dTh)) * sin(beta);
+//         xThrow.z() = zTh;
+
+//         vThrow.x() = v * cos(beta);
+//         vThrow.y() = v * sin(beta);
+//         vThrow.z() = v;
+//       }
+//     }
+//   }
+//   result.found = found;
+//   result.xThrow = xThrow;
+//   result.vThrow = vThrow;
+//   result.aThrow = aThrow;
+//   return result;
+// }
+
+throwData computeThrow(Eigen::Vector3d xStart, Eigen::Vector3d xGround, double marg)
 {
-  double delta_z, delta_x, F;
-  double vMin = 100000000;
-  double theta_min, theta_start = M_PI_4;
-  double tr = 0.01;
-  angleData result;
-  result.found = false;
+  double alpha, beta, gamma, r, c, t_2, start, s, dx, V_new, eta;
+  double V = 100000000, R = 0.855, step = 0.0001;
+  double temp;
+  R = R - marg;
+  Eigen::Matrix<double, 3, 1> u;
+  u.setZero();
+  u(2) = 1;
+  Eigen::Matrix<double, 2, 1> P_1;
+  Eigen::Matrix<double, 3, 1> v;
+  v(0) = xGround.x() - xStart.x();
+  v(1) = xGround.y() - xStart.y();
+  v(2) = 0;
+  v = (1 / v.norm()) * v;
 
-  delta_z = zTh + l;
-  delta_x = xGr - xTh;
+  Eigen::Vector3d xThrow_new;
+  xThrow_new.setZero();
 
-  for (double theta = -M_PI / 3; theta <= M_PI / 3; theta += 0.1)
-  {
-    for (double v = 0.1; v <= 5; v += 0.05)
-    {
-      F = -delta_x + ((pow(v, 2)) / (2 * g)) * (sin(2 * theta) + 2 * cos(theta) * sqrt((pow(sin(theta), 2)) + (2 * g * delta_z) / (pow(v, 2))));
-      if (abs(F) <= tr)
-      {
-        if (abs(v) < vMin)
-        {
-          result.found = true;
-          result.theta = theta;
-          result.v = v;
-        }
-      }
-    }
-  }
-  return result;
-}
+  alpha = 2 * (xStart.x() * v(0) + xStart.y() * v(1));
+  beta = 2 * xStart.z();
+  gamma = -(pow(R, 2) - pow(xStart.x(), 2) - pow(xStart.y(), 2) - pow(xStart.z(), 2));
+  r = sqrt(0.25 * pow(alpha, 2) + 0.25 * pow(beta, 2) - gamma);
+  c = pow(r, 2) - 0.25 * pow(beta, 2);
 
-throwData computeThrow(Eigen::Vector3d xGround, double **mat, int n, int m, double marg)
-{
-  double vMin = 100000000, beta, dTh, zTh, Dx, Dz, v, tFl, l;
+  t_2 = -0.25 * beta + 0.5 * sqrt(pow(beta, 2) + 4 * c);
+  start = -xStart.z();
+
   Eigen::Vector3d xThrow;
-  xThrow.x() = 0;
-  xThrow.y() = 0;
-  xThrow.z() = 0;
+  xThrow.setZero();
   Eigen::Vector3d vThrow;
-  vThrow.x() = 0;
-  vThrow.y() = 0;
-  vThrow.z() = 0;
+  vThrow.setZero();
   Eigen::Vector3d aThrow;
-  aThrow.x() = 0;
-  aThrow.y() = 0;
-  aThrow.z() = 0;
+  aThrow.setZero();
   bool found = false;
   throwData result;
-  angleData ad;
 
-  char temp;
-
-  // cout << "Computing throw data for X_ground = \n"  << xGround << endl;
-  // cin >> temp;
-  // xGround ok
-  l = -xGround.z();
-  beta = atan2(xGround.y(), xGround.x());
-
-  // for (int i = 0; i < m; i++)
-  // {
-  //   zTh = mat[1][i];
-  //   if (zTh>=0.5)
-  //   {
-  //       dTh = mat[0][i];
-  //       // cout << "X = " << dTh << " ; Z = " << zTh << endl;
-  //       // while (cin.get() != '\n');
-
-  //       Dx = sqrt(pow(xGround.x(), 2) + pow(xGround.y(), 2)) + marg;
-  //       ad = computeAngle(l, zTh, G, dTh, Dx);
-  //       if(ad.found)
-  //       {
-  //         if(ad.v < vMin)
-  //         {
-  //           // cout << "Found result\n" << endl;
-  //           // cout << "X = " << dTh << " ; Z = " << zTh << " ; V = " << ad.v << endl;
-  //           // cin >> carlo;
-  //           vMin = ad.v;
-  //           result.theta = ad.theta;
-  //           result.found = true;
-  //           xThrow.x() = (dTh - marg * sign(dTh)) * cos(beta);
-  //           xThrow.y() = (dTh - marg * sign(dTh)) * sin(beta);
-  //           xThrow.z() = zTh;
-  //           vThrow.x() = vMin * cos(beta) * cos(ad.theta);
-  //           vThrow.y() = vMin * sin(beta) * cos(ad.theta);
-  //           vThrow.z() = vMin * sin(ad.theta);
-  //         }
-  //       }
-
-  //   }
-
-  // }
-
-  for (int i = 0; i < m; i++)
+  for (double t = start; t <= t_2; t += step)
   {
-    zTh = mat[1][i];
-    if (zTh >= 0.5)
+    temp = pow(r, 2) - pow((t + 0.5 * beta), 2);
+    if (temp < 0)
+      continue;
+
+    s = -0.5 * alpha + sqrt(temp);
+
+    xThrow_new.x() = xStart.x() + s * v(0);
+    xThrow_new.y() = xStart.y() + s * v(1);
+    xThrow_new.z() = xStart.z() + t * u(2);
+
+    dx = sqrt(pow((xGround.x() - xThrow_new.x()), 2) + pow((xGround.y() - xThrow_new.y()), 2));
+    P_1(0) = dx;
+    P_1(1) = xGround.z();
+
+    temp = (G * pow(P_1(0), 2)) / (P_1(0) - P_1(1) + xThrow_new.z());
+    if (temp < 0)
+      continue;
+    V_new = sqrt(temp);
+    if (V_new < V)
     {
-      dTh = mat[0][i];
-      Dx = sqrt(pow(xGround.x(), 2) + pow(xGround.y(), 2)) - dTh + marg;
-      Dz = xGround.z() - zTh;
-      v = sqrt((pow(Dx, 2) * G) / (2 * (Dx - Dz)));
-
-      if (!isnan(v) && v < vMin)
-      {
-        tFl = Dx / v;
-        found = true;
-        vMin = v;
-        xThrow.x() = (dTh - marg * sign(dTh)) * cos(beta);
-        xThrow.y() = (dTh - marg * sign(dTh)) * sin(beta);
-        xThrow.z() = zTh;
-
-        vThrow.x() = v * cos(beta);
-        vThrow.y() = v * sin(beta);
-        vThrow.z() = v;
-      }
+      result.found = true;
+      V = V_new;
+      xThrow = xThrow_new;
     }
   }
+
+  if (found)
+  {
+    eta = atan2(xGround.y() - xStart.y(), xGround.x() - xStart.x());
+    vThrow.x() = V * cos(eta) * cos(M_PI_4);
+    vThrow.y() = V * sin(eta) * cos(M_PI_4);
+    vThrow.z() = V * sin(M_PI_4);
+  }
+
   result.found = found;
   result.xThrow = xThrow;
   result.vThrow = vThrow;
@@ -874,7 +954,6 @@ int main(int argc, char **argv)
     // quatHand.Z = 0.298056;
     // quatHand.W = -0.931559;
 
-
     // // Quaternione per lancio su x
     // quatHand.X = -0.262875;
     // quatHand.Y = 0.398214;
@@ -1014,27 +1093,13 @@ int main(int argc, char **argv)
     th = 0.3;
     tEnd = tThrow + th;
 
-    TR = computeThrow(pos_f, mat, n, m, marg);
+    // TR = computeThrow(pos_f, mat, n, m, marg);
+    TR = computeThrow(pos_startThrow, pos_f, marg);
     if (!TR.found)
     {
       ROS_ERROR_STREAM("Trajectory: Could not compute throw parameters ");
       return false;
     }
-
-    double beta, phi, theta, eta;
-
-    // New attempt
-    Eigen::Matrix<double, 3, 3> Rx;
-    // First rotation: x-axis--> -Pi/2
-
-    Eigen::Matrix<double, 3, 3> Rz;
-    Eigen::Matrix<double, 3, 3> Ry;
-    Eigen::Matrix<double, 3, 3> R_tot;
-    // First rotation: beta on z-axis
-    beta = atan2(pos_f.y(), pos_f.x());
-    // Second rotation: phi on "new" y-axis
-    // phi=-pi/4; per versione di lancio a 45°
-    phi = -TR.theta; //  per versione nuova
 
     // // Computing parameters
     Eigen::Matrix<double, 3, 3> A;
@@ -1061,12 +1126,9 @@ int main(int argc, char **argv)
          << TR.xThrow << "\nWith velocity:\n"
          << TR.vThrow << endl;
 
+    cin >> hand_msg.data;
     // Orientating hand
-    Quaternion quatThrow = Quaternion(1, 0, 0, 0);
-    // quatThrow.X =  0.92388;
-    // quatThrow.Y = 0.0;
-    // quatThrow.Z = 0.38268;
-    // quatThrow.W = 0.0;
+    Quaternion quatThrow;
     quatThrow = quatHand;
 
     hand_msg.data = 0.0;
