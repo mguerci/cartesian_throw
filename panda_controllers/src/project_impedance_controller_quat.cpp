@@ -42,11 +42,14 @@
 #define 	ALPHA_FILTER	0.1*0.1
 
 // Provvisorio --> definizione guadagni controllore
-#define 	KP		1000
-#define 	KV		200
+// #define 	KP		1000
+// #define 	KV		200
+
+#define 	KP		100
+#define 	KV		20
 #define 	KOR		4
 #define 	KPVEL	6
-#define 	KVVEL	1.2
+#define 	KVVEL	0.3
 
 /* 
 da fare:
@@ -634,8 +637,11 @@ void ProjectImpedanceControllerQuat::update(  const ros::Time& /*time*/,
 	//Pr2 = I7-ja_or_pinv*ja_or;
 	jacobian_inv = ((jacobian.transpose()*jacobian).inverse()) * jacobian.transpose();
 	Pr2 = I7-jacobian_inv*jacobian;
-	// tau_nullspace = (KPVEL*(q_d_nullspace_ - q)+KVVEL*(-dq));// q_d_nullspace_ is what in MATLAB is q_bar 
-	tau_nullspace = KVVEL*(-dq);
+	Eigen::Matrix<double,7,7> K_POS;
+	K_POS.setZero();
+	K_POS(1,1) = 0.5;
+	tau_nullspace = (K_POS*(q_d_nullspace_ - q)+KVVEL*(-dq));// q_d_nullspace_ is what in MATLAB is q_bar 
+	// tau_nullspace = KVVEL*(-dq);
 	// cout << tau_nullspace << endl;
 	tau_d = tau1 + Pr2*tau_nullspace; 
 
@@ -908,7 +914,7 @@ void ProjectImpedanceControllerQuat::desiredTrajectoryCallback(
 	orientation_d_.y() = msg->pose.orientation.y;
 	orientation_d_.z() = msg->pose.orientation.z;
 	orientation_d_.w() = msg->pose.orientation.w;
-	cout << "Trajectory position caught:\n" << position_d_ << endl;
+	// cout << "Trajectory position caught:\n" << position_d_ << endl;
 	// cout << "Trajectory orientation caught: " << orientation_d_.x() << " "  << orientation_d_.y() << " "  << orientation_d_.z() << " "  << orientation_d_.w() << endl;
 }
 

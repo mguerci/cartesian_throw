@@ -1,169 +1,180 @@
+// #include <franka_gripper/franka_gripper.h>
+#include <franka/gripper.h>
+#include <franka/exception.h>
+#include <franka/gripper_state.h>
+// #include <franka_gripper/GraspAction.h>
+// #include <franka_gripper/HomingAction.h>
+// #include <franka_gripper/MoveAction.h>
+// #include <franka_gripper/StopAction.h>
+#include </opt/ros/noetic/include/control_msgs/GripperCommandActionGoal.h>
+// #include </home/matteo/catkin_ws/devel/include/franka_gripper/GraspActionGoal.h>
 
-#include <panda_controllers/trajectory_oo.h>
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <cmath>
 
-using namespace panda_controllers ;
+#include <unistd.h>
+#include <cstdlib>
+#include <signal.h>
 
-sub_pub::sub_pub ( ros::NodeHandle* node_handle )
+#include <geometry_msgs/PoseStamped.h>
+
+#include <panda_controllers/DesiredTrajectory.h>
+// #include <panda_controllers/DesiredTrajectory.h>
+// #include <panda_controllers/cubeRef.h>
+// #include "panda_controllers/utils/parsing_utilities.h"
+
+#include <ros/ros.h>
+// #include <gripper.h>
+
+#include <sstream>
+#include <eigen_conversions/eigen_msg.h>
+
+// ROS Service and Message Includes
+#include "std_msgs/Float64.h"
+#include "std_msgs/Bool.h"
+#include "std_srvs/SetBool.h"
+#include "geometry_msgs/Pose.h"
+
+#include <Eigen/Dense>
+#include <Vector3.hpp>
+#include <Quaternion.hpp>
+#include <Matrix3x3.hpp>
+
+#define G 9.8182
+#define PP_time 3 // Time for pick & place task
+#define RATE_FREQ 500
+#define MAX_V 1.7
+#define MAX_A 13
+#define DM false
+
+using namespace std;
+
+struct throwData
 {
-     ROS_INFO ( "Inizialization of the CLASS" );
+  Eigen::Vector3d xThrow;
+  Eigen::Vector3d vThrow;
+  Eigen::Vector3d aThrow;
+  bool found;
+  double theta;
+};
 
-     //inizialization of all the functions
-     initializeSub_actual();
-     initializeSub_desired();
-     initializePub();
+struct angleData
+{
+  double theta;
+  double v;
+  bool found;
+};
 
-     //At the starting of the node, we set to zero the variables.
-     q_0 = Eigen::MatrixXd::Identity ( 7,1 );
-     q_d_sym = q_0;
-     q_final = q_0;
-     q_current = q_0;
+struct traj_struct
+{
+  Eigen::Vector3d pos_des;
+  Eigen::Vector3d vel_des;
+  Eigen::Vector3d acc_des;
+  Quaternion or_des;
+} traj;
 
+typedef struct orient_struct
+{
+  double x;
+  double y;
+  double z;
+  double w;
+} msgQuat;
+
+// New code
+Eigen::Vector3d pos;
+msgQuat orient;
+bool pos_received = false;
+// Previous one was:
+// Eigen::Vector3d orient; //Be careful--> watch data type
+// Orientation from ROS messages expressed in (x,y,z,w)
+// See http://docs.ros.org/en/noetic/api/geometry_msgs/html/msg/Pose.html
+
+// Define the function to be called when ctrl-c (SIGINT) is sent to process
+void signal_callback_handler(int signum)
+{
+  cout << "Caught signal " << signum << endl;
+  // Terminate program
+  exit(signum);
 }
 
-void sub_pub::initializeSub_actual() //subscriber of the joints coming from Franka
+void poseCallback(
+    const geometry_msgs::PoseStampedConstPtr &msg)
 {
 
-     ROS_INFO ( "Inizialization of the subscriber for ACTUAL JOINTS POSE\n" );
-     sub_q_actual = node_handle.subscribe ( "/franka_control/joint_states", 1, &sub_pub::Position_Callback, this );
+  pos << msg->pose.position.x, msg->pose.position.y, msg->pose.position.z;
+  orient.x = msg->pose.orientation.x;
+  orient.y = msg->pose.orientation.y;
+  orient.z = msg->pose.orientation.z;
+  orient.w = msg->pose.orientation.w;
+  // cout << "Pose msg arrived:\n" << pos << endl; //Msg displayed
+  pos_received = true;
 }
 
-void  sub_pub::initializeSub_desired() //subscriber of the desired pose coming from the user
+void waitForPos()
 {
-     ROS_INFO ( "Inizialization of the subscriber for DESIRED JOINTS POSE\n" );
-     sub_q_desired = node_handle.subscribe ( "desired_state", 1, &sub_pub::Desired_Callback, this );
+  ros::Rate loop_rate(RATE_FREQ);
+  pos_received = false;
+  while (!pos_received)
+  {
+    ros::spinOnce();
+    loop_rate.sleep();
+  }
 }
-
-void  sub_pub::initializePub() //publisher of the sampled trajectory
+void waitSec(double sec)
 {
-     ROS_INFO ( "Inizialization of the publisher\n" );
-     pub_q_desired = node_handle.advertise<sensor_msgs::JointState> ( "/panda_controllers/command", 1 );
+  ros::Time t_init;
+  double t;
+  t_init = ros::Time::now();
+  t = (ros::Time::now() - t_init).toSec();
+  while (t < sec)
+  {
+    t = (ros::Time::now() - t_init).toSec();
+  }
 }
 
-/* The two callbacks of the subscribers  */
-void  sub_pub::Position_Callback ( const franka_msgs::FrankaStatePtr& msg )
+int main(int argc, char **argv)
 {
-     if ( ( msg->q ).size() != 7 || ( msg->q ).empty() ) {
-          ROS_FATAL ( "Actual position has not dimension 7 or is empty!!!", ( msg->q ).size() );
-     }
 
-     //converting the array into a symbolic vector
-     q_current = Eigen::Map<const Eigen::Matrix<double, 7, 1>> ( msg->q.data() );
-     ROS_INFO ( "Actual pose of the joints:  ", q_0.data() );
+  // New code
+  ros::init(argc, argv, "trajectory");
+
+  ros::NodeHandle node_handle;
+
+  ros::Publisher pub_cmd = node_handle.advertise<panda_controllers::DesiredTrajectory>("/project_cartesian_throw/desired_trajectory", 1000);
+
+  // ros::Publisher grip_cmd = node_handle.advertise<control_msgs::GripperCommandActionGoal>("/franka_gripper/gripper_action/goal",1);
+
+  // ros::Publisher grip_grasp_cmd = node_handle.advertise<franka_gripper::GraspActionGoal>("/franka_gripper/grasp/goal",10);
+
+  // ros::Publisher pub_cube = node_handle.advertise<panda_controllers::cubeRef>("/qb_class/cube_ref",1);
+
+  ros::Publisher pub_sh = node_handle.advertise<std_msgs::Float64>("/right_hand_v2s/synergy_command", 1);
+
+  ros::Subscriber sub_cmd = node_handle.subscribe("/project_impedance_controller/franka_ee_pose", 1,
+                                                  &poseCallback);
+
+  ros::Rate loop_rate(100);
+
+  signal(SIGINT, signal_callback_handler);
+
+  panda_controllers::DesiredTrajectory traj_msg;
+  // control_msgs::GripperCommandActionGoal gripper_msg;
+  // franka_gripper::GraspActionGoal gripper_grasp_msg;
+  // End new code
+
+  cout << "Waiting for initial position" << endl;
+  waitForPos();
+  while (true)
+  {
+    waitForPos();
+    cout << "Position: " << pos.x() << "i + " << pos.y() << "j + " << pos.z() << "k " << endl;
+    cout << "Orientation: " << orient.x << "i + " << orient.y << "j + " << orient.z << "k + " << orient.w << endl;
+    waitSec(10);
+  }
+    
 }
-
-void  sub_pub::Desired_Callback ( const sensor_msgs::JointStatePtr& msg )
-{
-     if ( ( msg->position ).size() != 7 || ( msg->position ).empty() ) {
-          ROS_FATAL ( "Desired position has not dimension 7 or is empty!!!", ( msg->position ).size() );
-     }
-
-     //convertion of the array into symbolic vector
-     q_final = Eigen::Map<const Eigen::Matrix<double, 7, 1>> ( msg->position.data() );
-
-     ROS_INFO ( "Desired position of the joints:  ", q_final.data() );
-
-     /*if the q_final changes the flag is set to false */
-     flag = false;
-}
-
-void sub_pub::sampling_trajectory ( double dt , double t_f ) //The trajectory sampled
-{
-     //Declaring the frequency of messaging
-     frequency = 1/dt;
-     rate = std::make_shared<ros::Rate> ( frequency );
-
-     std::cout<< "Flag Check!" << std::endl;
-
-     if ( flag ) {
-
-          ros::spinOnce();
-
-          std::cout<< "We are in the cicle with FLAG TRUE." << std::endl;
-
-          while ( ( q_d_sym - q_final ).squaredNorm() > toll && flag ) {
-
-               ros::spinOnce();
-
-               dt_hat = ros::Time::now().toSec() - t_final; //Updating the dt_hat, we want to gather smaller windows.
-               t_star = t_star + dt_hat;
-               t_final = ros::Time::now().toSec();
-
-               //Subdeviding the trajectory into small pieces dt_sign long
-               q_d_sym = q_0 + ( ( q_final - q_0 ) / ( t_f - t_i ) ) * ( t_star - t_i );
-
-               std::cout << "q_d_sim: " << q_d_sym << std::endl;
-
-               std::cout<< "Sampled trajectory:  \n" << q_d_sym.data() << std::endl;
-
-               //Convertion of the MATRIX INTO ARRAY
-               for ( int i=0; i<7; i++ ) {
-                    q_d_star[i] = q_d_sym[i];
-               }
-
-               std::cout<< "Array:  \n" << q_d_star.data() << std::endl;
-
-               //Trasfering the ARRAY INTO STRING type
-               for ( int i=0; i<7; i++ ) {
-                    states.position.push_back ( q_d_star[i] );
-                    std::cout << q_d_star[i] << std::endl;
-               }
-               std::cout << " " << std::endl;
-
-               std::cout<< "Message:  \n" << states.position.data() << std::endl;
-
-               //publishing to command node the new q_desired
-               pub_q_desired.publish ( states );
-
-               std::cout << "Publish:   " << pub_q_desired << std::endl;
-
-
-               rate->sleep();
-          }
-
-     } else { //We enter in the else when a new q_final comes. Is the "resetting" cycle.
-
-          t_star = 0.0;
-          dt_hat = 0;
-          t_final = ros::Time::now().toSec();
-          flag = true;
-          std::cout<< "EXITING from the ELSE." << std::endl;
-     }
-
-}
-
-
-
-int main ( int argc, char **argv )
-{
-     ros::init ( argc,argv, "trajectory_oo" );
-     ros::NodeHandle nh ( "~" );
-
-     //Defining useful variables
-     double ti;
-     double toll;
-     double t_f, dt;
-
-     //Finding the dt and t_f parameters
-     if ( !nh.getParam ( "/trajectory_oo/dt", dt ) || !nh.getParam ( "/trajectory_oo/t_f", t_f ) ) {
-          ROS_ERROR ( "Could not get parameter dt or t_f !" );
-          return 1;
-     }
-
-     std::cout << "Value of dt and t_f:    " << dt << "    " << t_f << std::endl;
-
-     //Defining initial TIME and the TOLLERANCE
-     ti = 0;
-     toll = 0.0005;
-
-     ROS_INFO ( "Node active, ready to work!" );
-     sub_pub sub_pub_inst ( &nh );
-
-     while ( ros::ok() ) {
-          sub_pub_inst.sampling_trajectory ( dt,t_f );
-     }
-
-     return 0;
-
-}
-
 

@@ -105,8 +105,6 @@ project_impedance_controller_quat:
         - panda_joint7
     var_damp: true 
 
-
-
 # PROVA 2: K_default=200, SCENDE;PRENDE OGGETTO; RISALE; RISCENDE; LASCIA OGGETTO; RISALE
 # traj_par: 
 #     N_ACTION : 5

@@ -44,10 +44,11 @@
 #include <Matrix3x3.hpp>
 
 #define G 9.8182
-#define PP_time 5 // Time for pick & place task
+#define PP_time 3 // Time for pick & place task
 #define RATE_FREQ 500
 #define MAX_V 1.7
 #define MAX_A 13
+#define DM false
 
 using namespace std;
 
@@ -198,7 +199,6 @@ throwData computeThrow(Eigen::Vector3d xGround, double **mat, int n, int m, doub
   angleData ad;
 
   char temp;
-  char carlo;
 
   // cout << "Computing throw data for X_ground = \n"  << xGround << endl;
   // cin >> temp;
@@ -275,10 +275,11 @@ throwData computeThrow(Eigen::Vector3d xGround, double **mat, int n, int m, doub
 void demo_inf_XY(Eigen::Vector3d pos_i, double t)
 {
   Eigen::Vector3d tmp;
-  tmp << sin(t) / 8, sin(t / 2) / 4, 0;
+  double beta = 1;
+  tmp << sin(t / beta) / 8, sin(t / 2 * beta) / 4, 0;
   traj.pos_des << pos_i + tmp;
-  traj.vel_des << cos(t) / 8, cos(t / 2) / 8, 0;
-  traj.acc_des << -sin(t) / 8, -sin(t / 2) / 16, 0;
+  traj.vel_des << cos(t / beta) / (8 * beta), cos(t / 2 * beta) / (8 * beta), 0;
+  traj.acc_des << -sin(t / beta) / (8 * pow(beta, 2)), -sin(t / 2 * beta) / (16 * pow(beta, 2)), 0;
 }
 
 void interpolator_pos(Eigen::Vector3d pos_i, Eigen::Vector3d pos_f,
@@ -531,6 +532,63 @@ void rotate_EE(Quaternion quatStart, Quaternion quatEnd, Eigen::Vector3d curr_po
   }
 }
 
+void moveRotate_EE(Quaternion quatStart, Quaternion quatEnd, Eigen::Vector3d posStart, Eigen::Vector3d posEnd, ros::Publisher pub_cmd)
+{
+  ros::Time t_init;
+  double t, tr;
+  ros::Rate loop_rate(RATE_FREQ);
+  panda_controllers::DesiredTrajectory traj_msg;
+  t_init = ros::Time::now();
+  t = (ros::Time::now() - t_init).toSec();
+  waitForPos();
+  while (!isClose(pos, posEnd, 0.01))
+  {
+    t = (ros::Time::now() - t_init).toSec();
+    tr = t;
+    if (t > PP_time)
+    {
+      t = PP_time;
+    }
+
+    if (tr > 2 * PP_time)
+    {
+      break;
+    }
+
+    interpolator_pos(posStart, posEnd, PP_time, t);
+    Quaternion quatDes = Quaternion::Slerp(quatStart, quatEnd, t / PP_time);
+
+    // Now message has to be sent
+    traj_msg.header.stamp = ros::Time::now();
+
+    traj_msg.pose.position.x = traj.pos_des.x();
+    traj_msg.pose.position.y = traj.pos_des.y();
+    traj_msg.pose.position.z = traj.pos_des.z();
+
+    traj_msg.velocity.position.x = traj.vel_des.x();
+    traj_msg.velocity.position.y = traj.vel_des.y();
+    traj_msg.velocity.position.z = traj.vel_des.z();
+
+    traj_msg.acceleration.position.x = traj.acc_des.x();
+    traj_msg.acceleration.position.y = traj.acc_des.y();
+    traj_msg.acceleration.position.z = traj.acc_des.z();
+
+    // // Sending initial orientation
+    // traj_msg.pose.orientation.x = quatStart.X;
+    // traj_msg.pose.orientation.y = quatStart.Y;
+    // traj_msg.pose.orientation.z = quatStart.Z;
+    // traj_msg.pose.orientation.w = quatStart.W;
+
+    // Sending hand orientation
+    traj_msg.pose.orientation.x = quatDes.X;
+    traj_msg.pose.orientation.y = quatDes.Y;
+    traj_msg.pose.orientation.z = quatDes.Z;
+    traj_msg.pose.orientation.w = quatDes.W;
+    pub_cmd.publish(traj_msg);
+    waitForPos();
+  }
+}
+
 void waitSec(double sec)
 {
   ros::Time t_init;
@@ -579,6 +637,7 @@ int main(int argc, char **argv)
   Eigen::Vector3d obj_init;
   Eigen::Vector3d pos_bar;
   Eigen::Vector3d pos_target;
+  Eigen::Vector3d pos_startThrow;
   // Eigen::Vector3d pos_reset;
   // msgQuat orient_reset;
 
@@ -596,11 +655,13 @@ int main(int argc, char **argv)
   double **mat = NULL;
   double tJerk, tThrow, tEnd;
   double th;
+  double thMode;
+  double debug;
   // node_handle.getParam("th", th);
   // cout << th << endl;
   bool firstSwitch = true;
-  bool demo = false;
-  double marg = 0.4;
+  bool demo = DM;
+  double marg;
   throwData throwValues;
   std_msgs::Float64 hand_msg;
 
@@ -633,6 +694,11 @@ int main(int argc, char **argv)
   // waitSec(10);
   cout << "Waiting for initial position" << endl;
   waitForPos();
+  // while (true)
+  // {
+  //   waitForPos();
+  //   cout << "Orientation: " << orient.x << "i + " << orient.y << "j + " << orient.z << "k + " << orient.w << endl;
+  // }
   // cout << "Orientation: " << orient.x << " "<< orient.y << " "<< orient.z << " "<< orient.w << endl;
   // From message
   pos_init = pos;
@@ -658,6 +724,8 @@ int main(int argc, char **argv)
 
   if (demo)
   {
+    waitForPos();
+    move_EE(pos, pos_bar, quatStart, pub_cmd);
     t_init = ros::Time::now();
     t = (ros::Time::now() - t_init).toSec();
     while (ros::ok())
@@ -698,11 +766,12 @@ int main(int argc, char **argv)
         loop_rate.sleep();
       }
 
-      cout << "Orientation received: " << orient.x << " " << orient.y << " " << orient.z << " " << orient.w << endl;
+      // cout << "Orientation received: " << orient.x << " " << orient.y << " " << orient.z << " " << orient.w << endl;
     }
   }
   else
   {
+    double time_adv, scale;
     // waitSec(10);
     hand_msg.data = 0.0;
     pub_sh.publish(hand_msg);
@@ -714,18 +783,45 @@ int main(int argc, char **argv)
     quatHand.Y = -0.2706;
     quatHand.Z = -0.2706;
     quatHand.W = 0.6533;
-    rotate_EE(quatStart, quatHand, pos_init, pub_cmd);
+    // quatHand.X = 0.26984;
+    // quatHand.Y = -0.643745;
+    // quatHand.Z = 0.649614;
+    // quatHand.W = 0.30124;
+
+    // waitForPos();
+    // move_EE(pos, pos_bar, quatStart, pub_cmd);
+    // waitForPos();
+    // rotate_EE(quatStart, quatHand, pos, pub_cmd);
+    waitForPos();
+    moveRotate_EE(quatStart, quatHand, pos, pos_bar, pub_cmd);
+
+    // obj_init.x() = 0.38;
+    // obj_init.y() = -0.26;
+    // obj_init.z() = 0.02;
 
     obj_init.x() = 0.38;
     obj_init.y() = -0.26;
-    obj_init.z() = 0.484;
+    obj_init.z() = 0.06;
+
+    // REAL VALUES
+    obj_init.x() = 0.55;
+    obj_init.y() = -0.35;
+    obj_init.z() = 0.05;
+
+    // obj_init.x() = -0.426;
+    // obj_init.y() = -0.02;
+    // obj_init.z() = 0.485;
+
+    // pos_target.x() = 0 ;
+    // pos_target.y() = 0.5;
+    // pos_target.z() = obj_init.z();
+    // moveRotate_EE(quatStart, quatHand, pos, pos_target, pub_cmd);
+    // cin >> scale;
 
     pos_target = obj_init;
     pos_target.z() = obj_init.z() + 0.13;
-
     waitForPos();
     move_EE(pos, pos_target, quatHand, pub_cmd);
-
     waitForPos();
     move_EE(pos, obj_init, quatHand, pub_cmd);
     cout << "Here comes the hand" << endl;
@@ -737,19 +833,139 @@ int main(int argc, char **argv)
     waitSec(3);
     cout << "Hand closed" << endl;
 
-    cout << "Going to q_bar position" << endl;
+    // cout << "Going to q_bar position" << endl;
+    // waitForPos();
+    // move_EE(pos, pos_bar, quatHand, pub_cmd);
+
+    pos_startThrow.x() = 0.4;
+    pos_startThrow.y() = -0.3;
+    pos_startThrow.z() = 0.37;
+    cout << "Going to start throw position" << endl;
     waitForPos();
-    move_EE(pos, pos_bar, quatHand, pub_cmd);
+    // move_EE(pos, pos_startThrow, quatHand, pub_cmd);
+    quatStart = quatHand;
+
+    // quatHand.X = 0.208214;
+    // quatHand.Y = 0.00316372;
+    // quatHand.Z = 0.298056;
+    // quatHand.W = -0.931559;
+
+
+    // // Quaternione per lancio su x
+    // quatHand.X = -0.262875;
+    // quatHand.Y = 0.398214;
+    // quatHand.Z = -0.426742;
+    // quatHand.W = 0.768254;
+
+    // Quaternione per lancio obliquo
+    quatHand.X = -0.2484;
+    quatHand.Y = 0.4319;
+    quatHand.Z = 0.2944;
+    quatHand.W = 0.8169;
+    moveRotate_EE(quatStart, quatHand, pos, pos_startThrow, pub_cmd);
 
     // Rotating hand in throw orientation
     quatStart = quatHand;
-    quatHand.X = -0.15907;
-    quatHand.Y = 0.082477;
-    quatHand.Z = 0.46932;
-    quatHand.W = 0.86466;
+    // cout << "Select throw mode: ";
+    // cin >> thMode;
+    thMode = 3;
+    // if ((thMode != 1) && (thMode != 2))
+    // {
+    //   thMode = 1;
+    // }
 
-    waitForPos();
-    rotate_EE(quatStart, quatHand, pos, pub_cmd);
+    if (thMode == 1)
+    {
+      // For x-throw
+      marg = 0.2;
+      quatHand.X = 0.208214;
+      quatHand.Y = 0.00316372;
+      quatHand.Z = 0.298056;
+      quatHand.W = -0.931559;
+
+      // X-throw
+      pos_f.x() = 1.6;
+      pos_f.y() = 1;
+      pos_f.z() = 0;
+
+      // X-throw
+      scale = 2.8;
+      tJerk = 0.2;
+      time_adv = 0.6;
+    }
+    else if (thMode == 2) // Non va più
+    {
+      // For y-throw
+      marg = 0.2;
+      quatHand.X = -0.15907;
+      quatHand.Y = 0.082477;
+      quatHand.Z = 0.46932;
+      quatHand.W = 0.86466;
+
+      // Y-throw
+      pos_f.x() = 0.4;
+      pos_f.y() = 1.6;
+      pos_f.z() = 0;
+
+      scale = 2.8;
+      tJerk = 0.4;
+      time_adv = 0.4;
+    }
+    else if (thMode == 3)
+    {
+      // For x-throw
+      marg = 0.20;
+      // Quaternione per lancio dritto su x
+      quatHand.X = -0.262875;
+      quatHand.Y = 0.398214;
+      quatHand.Z = -0.426742;
+      quatHand.W = 0.768254;
+
+      // Quaternione per lancio obliquo
+      quatHand.X = -0.2484;
+      quatHand.Y = 0.4319;
+      quatHand.Z = 0.2944;
+      quatHand.W = 0.8169;
+
+      cout << "Final position of the object (x,y,z): " << endl;
+      cin >> pos_f.x();
+      cin >> pos_f.y();
+      cin >> pos_f.z();
+      // X-throw
+      // pos_f.x() = 1;
+      // pos_f.y() = 0.1;
+      // pos_f.z() = 0;
+
+      // X-throw
+      cout << "Time for minJerk: ";
+      cin >> tJerk;
+      cout << "Hand cmd time advance ";
+      cin >> time_adv;
+      cout << "Scale factor: ";
+      cin >> scale;
+      // scale = 1;
+      // tJerk = 0.2;
+      // time_adv = 0.6;
+    }
+    else if (thMode == 4)
+    {
+      marg = 0.2;
+      quatHand.X = 0.208214;
+      quatHand.Y = 0.00316372;
+      quatHand.Z = 0.298056;
+      quatHand.W = -0.931559;
+
+      pos_f.x() = 2;
+      pos_f.y() = 0.4;
+      pos_f.z() = 0;
+
+      scale = 1;
+      tJerk = 0.4;
+      time_adv = 0.1;
+    }
+
+    // waitForPos();
+    // rotate_EE(quatStart, quatHand, pos, pub_cmd);
 
     waitForPos();
     pos_init = pos;
@@ -757,10 +973,7 @@ int main(int argc, char **argv)
     // cin >> pos_f.x();
     // cin >> pos_f.y();
     // cin >> pos_f.z();
-    pos_f.x() = 0.4;
-    pos_f.y() = 1.6;
-    pos_f.z() = 0;
-    double time_adv, scale;
+
     bool fsHand = true;
     double modV, modA;
 
@@ -768,15 +981,14 @@ int main(int argc, char **argv)
     // cin >> tJerk;
     // cout << "Hand cmd time advance ";
     // cin >> time_adv;
-    cout << "Scale factor: ";
-    cin >> scale;
-    // scale = 2.3;
-    
-    tJerk = 0.2;
+    // cout << "Scale factor: ";
+    // cin >> scale;
+
     tThrow = tJerk * scale;
-    time_adv = 0.55;
+
     // th = 0.12; // Time to stop
-    th = 0.08;
+    // th = 0.08;
+    th = 0.3;
     tEnd = tThrow + th;
 
     TR = computeThrow(pos_f, mat, n, m, marg);
@@ -909,9 +1121,9 @@ int main(int argc, char **argv)
           // traj.vel_des.y() = throwValues.vThrow.y();
           // traj.vel_des.z() = throwValues.vThrow.z() - G * (t - tThrow);
           interpolator_posSpeed(throwValues.xThrow, throwValues.vThrow, th, t - tThrow);
-          // cout << "Braking:\n"
-          //      << traj.pos_des << endl;
-          // cout << "Braking time: " << t - tThrow << endl;
+          cout << "Braking:\n"
+               << traj.pos_des << endl;
+          cout << "Braking time: " << t - tThrow << endl;
         }
       }
 
@@ -938,27 +1150,27 @@ int main(int argc, char **argv)
       pub_cmd.publish(traj_msg);
 
       // Verifing limits
-      modV = sqrt(pow(traj.vel_des.x(), 2) + pow(traj.vel_des.y(), 2) + pow(traj.vel_des.z(), 2));
-      if (modV > MAX_V)
-      {
-        cout << "Speed abs: " << modV << " --> saturating at time: " << t << endl;
-      }
-      else
-      {
-        cout << "Speed abs: " << modV ;
-      }
+      // modV = sqrt(pow(traj.vel_des.x(), 2) + pow(traj.vel_des.y(), 2) + pow(traj.vel_des.z(), 2));
+      // if (modV > MAX_V)
+      // {
+      //   cout << "Speed abs: " << modV << " --> saturating at time: " << t << endl;
+      // }
+      // else
+      // {
+      //   cout << "Speed abs: " << modV;
+      // }
 
-      modA = sqrt(pow(traj.acc_des.x(), 2) + pow(traj.acc_des.y(), 2) + pow(traj.acc_des.z(), 2));
-      if (modA > MAX_A)
-      {
-        cout << "Acceleration abs: " << modA << " --> saturating at time: " << t  << endl;
-      }
-      // cout << "Trajectory message " << nM << " sent:\n" << traj_msg.pose.position << endl;
-      // cout << "Trajectory or message " << nM << " sent:\nx: " << traj_msg.pose.orientation.x << "\ny: " << traj_msg.pose.orientation.y << " \nz:" << traj_msg.pose.orientation.z << " \nw:" << traj_msg.pose.orientation.w << endl;
-      else
-      {
-        cout << "  Acceleration abs: " << modA << endl;
-      }
+      // modA = sqrt(pow(traj.acc_des.x(), 2) + pow(traj.acc_des.y(), 2) + pow(traj.acc_des.z(), 2));
+      // if (modA > MAX_A)
+      // {
+      //   cout << "Acceleration abs: " << modA << " --> saturating at time: " << t << endl;
+      // }
+      // // cout << "Trajectory message " << nM << " sent:\n" << traj_msg.pose.position << endl;
+      // // cout << "Trajectory or message " << nM << " sent:\nx: " << traj_msg.pose.orientation.x << "\ny: " << traj_msg.pose.orientation.y << " \nz:" << traj_msg.pose.orientation.z << " \nw:" << traj_msg.pose.orientation.w << endl;
+      // else
+      // {
+      //   cout << "  Acceleration abs: " << modA << endl;
+      // }
       nM++;
 
       loop_rate.sleep();
