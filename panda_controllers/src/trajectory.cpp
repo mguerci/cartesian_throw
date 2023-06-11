@@ -44,7 +44,7 @@
 #include <Matrix3x3.hpp>
 
 #define G 9.8182
-#define PP_time 3 // Time for pick & place task
+#define PP_time 5 // Time for pick & place task
 #define RATE_FREQ 500
 #define MAX_V 1.7
 #define MAX_A 13
@@ -312,29 +312,29 @@ Quaternion normalizeQuat(Quaternion q)
   return n;
 }
 
-double phi(Quaternion q)
-{
-  double phi;
-  q = normalizeQuat(q);
-  phi = atan2(2 * (q.W * q.Z + q.X * q.Y), 1 - 2 * (pow(q.Y, 2) + pow(q.Z, 2)));
-  return phi;
-}
+// double phi(Quaternion q)
+// {
+//   double phi;
+//   q = normalizeQuat(q);
+//   phi = atan2(2 * (q.W * q.Z + q.X * q.Y), 1 - 2 * (pow(q.Y, 2) + pow(q.Z, 2)));
+//   return phi;
+// }
 
-double theta(Quaternion q)
-{
-  double theta;
-  q = normalizeQuat(q);
-  theta = -M_PI / 2 + 2 * atan2(sqrt(1 + 2 * (q.W * q.Y - q.X * q.Z)), sqrt(1 - 2 * (q.W * q.Y - q.X * q.Z)));
-  return theta;
-}
+// double theta(Quaternion q)
+// {
+//   double theta;
+//   q = normalizeQuat(q);
+//   theta = -M_PI / 2 + 2 * atan2(sqrt(1 + 2 * (q.W * q.Y - q.X * q.Z)), sqrt(1 - 2 * (q.W * q.Y - q.X * q.Z)));
+//   return theta;
+// }
 
-double psi(Quaternion q)
-{
-  double psi;
-  q = normalizeQuat(q);
-  psi = atan2(2 * (q.W * q.X + q.Y * q.Z), 1 - 2 * (pow(q.X, 2) + pow(q.Y, 2)));
-  return psi;
-}
+// double psi(Quaternion q)
+// {
+//   double psi;
+//   q = normalizeQuat(q);
+//   psi = atan2(2 * (q.W * q.X + q.Y * q.Z), 1 - 2 * (pow(q.X, 2) + pow(q.Y, 2)));
+//   return psi;
+// }
 
 bool isClose(Eigen::Vector3d p1, Eigen::Vector3d p2, double marg)
 {
@@ -437,14 +437,16 @@ void waitForPos()
   }
 }
 
-void move_EE(Eigen::Vector3d posStart, Eigen::Vector3d posEnd, Quaternion curr_or, ros::Publisher pub_cmd)
+void move_EE(Eigen::Vector3d posEnd, Quaternion curr_or, ros::Publisher pub_cmd)
 {
   ros::Time t_init;
   double t, tr;
   ros::Rate loop_rate(RATE_FREQ);
   panda_controllers::DesiredTrajectory traj_msg;
+  Eigen::Vector3d posStart;
   t_init = ros::Time::now();
   waitForPos();
+  posStart = pos;
   while (!isClose(pos, posEnd, 0.01))
   {
     t = (ros::Time::now() - t_init).toSec();
@@ -493,12 +495,20 @@ void move_EE(Eigen::Vector3d posStart, Eigen::Vector3d posEnd, Quaternion curr_o
   }
 }
 
-void rotate_EE(Quaternion quatStart, Quaternion quatEnd, Eigen::Vector3d curr_pos, ros::Publisher pub_cmd)
+void rotate_EE(Quaternion quatEnd, ros::Publisher pub_cmd)
 {
   ros::Time t_init;
   double t;
   ros::Rate loop_rate(RATE_FREQ);
   panda_controllers::DesiredTrajectory traj_msg;
+  Quaternion quatStart;
+  Eigen::Vector3d curr_pos;
+  waitForPos();
+  quatStart.X = orient.x;
+  quatStart.Y = orient.y;
+  quatStart.Z = orient.z;
+  quatStart.W = orient.w;
+  curr_pos = pos;
   t_init = ros::Time::now();
   t = (ros::Time::now() - t_init).toSec();
   while (t < PP_time)
@@ -532,12 +542,20 @@ void rotate_EE(Quaternion quatStart, Quaternion quatEnd, Eigen::Vector3d curr_po
   }
 }
 
-void moveRotate_EE(Quaternion quatStart, Quaternion quatEnd, Eigen::Vector3d posStart, Eigen::Vector3d posEnd, ros::Publisher pub_cmd)
+void moveRotate_EE(Quaternion quatEnd, Eigen::Vector3d posEnd, ros::Publisher pub_cmd)
 {
   ros::Time t_init;
   double t, tr;
   ros::Rate loop_rate(RATE_FREQ);
   panda_controllers::DesiredTrajectory traj_msg;
+  Quaternion quatStart;
+  Eigen::Vector3d posStart;
+  waitForPos();
+  quatStart.X = orient.x;
+  quatStart.Y = orient.y;
+  quatStart.Z = orient.z;
+  quatStart.W = orient.w;
+  posStart = pos;
   t_init = ros::Time::now();
   t = (ros::Time::now() - t_init).toSec();
   waitForPos();
@@ -618,6 +636,7 @@ int main(int argc, char **argv)
   // ros::Publisher pub_cube = node_handle.advertise<panda_controllers::cubeRef>("/qb_class/cube_ref",1);
 
   ros::Publisher pub_sh = node_handle.advertise<std_msgs::Float64>("/right_hand_v2s/synergy_command", 1);
+  ros::Publisher pub_real_sh = node_handle.advertise<std_msgs::Float64>("/qb_class/hand_ref", 1);
 
   ros::Subscriber sub_cmd = node_handle.subscribe("/project_impedance_controller/franka_ee_pose", 1,
                                                   &poseCallback);
@@ -664,6 +683,7 @@ int main(int argc, char **argv)
   double marg;
   throwData throwValues;
   std_msgs::Float64 hand_msg;
+  std_msgs::Float64 real_hand_msg;
 
   // franka::Gripper gripper("$robot_ip");
 
@@ -725,7 +745,7 @@ int main(int argc, char **argv)
   if (demo)
   {
     waitForPos();
-    move_EE(pos, pos_bar, quatStart, pub_cmd);
+    move_EE(pos_bar, quatStart, pub_cmd);
     t_init = ros::Time::now();
     t = (ros::Time::now() - t_init).toSec();
     while (ros::ok())
@@ -775,6 +795,8 @@ int main(int argc, char **argv)
     // waitSec(10);
     hand_msg.data = 0.0;
     pub_sh.publish(hand_msg);
+    real_hand_msg.data = 0.0;
+    pub_real_sh.publish(real_hand_msg);
     waitSec(3);
     cout << "Hand full open" << endl;
 
@@ -783,66 +805,68 @@ int main(int argc, char **argv)
     quatHand.Y = -0.2706;
     quatHand.Z = -0.2706;
     quatHand.W = 0.6533;
+
+    // SIMULATION
+    quatHand.X = 0.7;
+    quatHand.Y = 0.0356;
+    quatHand.Z = 0.7144;
+    quatHand.W = 0.0086;
+    quatHand = normalizeQuat(quatHand);
     // quatHand.X = 0.26984;
     // quatHand.Y = -0.643745;
     // quatHand.Z = 0.649614;
     // quatHand.W = 0.30124;
 
     // waitForPos();
-    // move_EE(pos, pos_bar, quatStart, pub_cmd);
-    // waitForPos();
-    // rotate_EE(quatStart, quatHand, pos, pub_cmd);
-    waitForPos();
-    moveRotate_EE(quatStart, quatHand, pos, pos_bar, pub_cmd);
+    // move_EE(pos_bar, quatStart, pub_cmd);
+    // rotate_EE(quatHand, pub_cmd);
 
     // obj_init.x() = 0.38;
     // obj_init.y() = -0.26;
     // obj_init.z() = 0.02;
 
-    obj_init.x() = 0.38;
-    obj_init.y() = -0.26;
-    obj_init.z() = 0.06;
+    // obj_init.x() = 0.38;
+    // obj_init.y() = -0.26;
+    // obj_init.z() = 0.06;
 
     // REAL VALUES
-    obj_init.x() = 0.55;
-    obj_init.y() = -0.35;
-    obj_init.z() = 0.05;
+    // obj_init.x() = 0.55;
+    // obj_init.y() = -0.35;
+    // obj_init.z() = 0.05;
 
-    // obj_init.x() = -0.426;
-    // obj_init.y() = -0.02;
-    // obj_init.z() = 0.485;
-
-    // pos_target.x() = 0 ;
-    // pos_target.y() = 0.5;
-    // pos_target.z() = obj_init.z();
-    // moveRotate_EE(quatStart, quatHand, pos, pos_target, pub_cmd);
-    // cin >> scale;
+    // SIMULATION VALUES
+    obj_init.x() = 0.496;
+    obj_init.y() = -0.552;
+    obj_init.z() = 0.178;
 
     pos_target = obj_init;
-    pos_target.z() = obj_init.z() + 0.13;
+    pos_target.z() = obj_init.z() + 0.25;
+    moveRotate_EE(quatHand, pos_target, pub_cmd);
+    // waitForPos();
+    // move_EE(pos_target, quatHand, pub_cmd);
     waitForPos();
-    move_EE(pos, pos_target, quatHand, pub_cmd);
-    waitForPos();
-    move_EE(pos, obj_init, quatHand, pub_cmd);
+    move_EE(obj_init, quatHand, pub_cmd);
     cout << "Here comes the hand" << endl;
     // cout << "Waiting for enter to close" << endl;
     // while (cin.get() != '\n');
     hand_msg.data = 0.9;
     pub_sh.publish(hand_msg);
+    real_hand_msg.data = 10000;
+    pub_real_sh.publish(real_hand_msg);
     cout << "Hand closing" << endl;
     waitSec(3);
     cout << "Hand closed" << endl;
 
     // cout << "Going to q_bar position" << endl;
     // waitForPos();
-    // move_EE(pos, pos_bar, quatHand, pub_cmd);
+    // move_EE(pos_bar, quatHand, pub_cmd);
 
-    pos_startThrow.x() = 0.4;
-    pos_startThrow.y() = -0.3;
-    pos_startThrow.z() = 0.37;
+    pos_startThrow.x() = 0.48;
+    pos_startThrow.y() = -0.4;
+    pos_startThrow.z() = 0.46;
     cout << "Going to start throw position" << endl;
     waitForPos();
-    // move_EE(pos, pos_startThrow, quatHand, pub_cmd);
+    // move_EE(pos_startThrow, quatHand, pub_cmd);
     quatStart = quatHand;
 
     // quatHand.X = 0.208214;
@@ -858,11 +882,11 @@ int main(int argc, char **argv)
     // quatHand.W = 0.768254;
 
     // Quaternione per lancio obliquo
-    quatHand.X = -0.2484;
-    quatHand.Y = 0.4319;
-    quatHand.Z = 0.2944;
-    quatHand.W = 0.8169;
-    moveRotate_EE(quatStart, quatHand, pos, pos_startThrow, pub_cmd);
+    quatHand.X = 0.6284;
+    quatHand.Y = -0.5777;
+    quatHand.Z = 0.38434;
+    quatHand.W = -0.351634;
+    moveRotate_EE(quatHand, pos_startThrow, pub_cmd);
 
     // Rotating hand in throw orientation
     quatStart = quatHand;
@@ -916,16 +940,16 @@ int main(int argc, char **argv)
       // For x-throw
       marg = 0.20;
       // Quaternione per lancio dritto su x
-      quatHand.X = -0.262875;
-      quatHand.Y = 0.398214;
-      quatHand.Z = -0.426742;
-      quatHand.W = 0.768254;
+      // quatHand.X = -0.262875;
+      // quatHand.Y = 0.398214;
+      // quatHand.Z = -0.426742;
+      // quatHand.W = 0.768254;
 
-      // Quaternione per lancio obliquo
-      quatHand.X = -0.2484;
-      quatHand.Y = 0.4319;
-      quatHand.Z = 0.2944;
-      quatHand.W = 0.8169;
+      // // Quaternione per lancio obliquo
+      // quatHand.X = -0.2484;
+      // quatHand.Y = 0.4319;
+      // quatHand.Z = 0.2944;
+      // quatHand.W = 0.8169;
 
       cout << "Final position of the object (x,y,z): " << endl;
       cin >> pos_f.x();
@@ -964,8 +988,7 @@ int main(int argc, char **argv)
       time_adv = 0.1;
     }
 
-    // waitForPos();
-    // rotate_EE(quatStart, quatHand, pos, pub_cmd);
+    // rotate_EE(quatHand, pub_cmd);
 
     waitForPos();
     pos_init = pos;
@@ -1047,6 +1070,7 @@ int main(int argc, char **argv)
     quatThrow = quatHand;
 
     hand_msg.data = 0.0;
+    real_hand_msg.data = 0.0;
     waitSec(3);
     t_init = ros::Time::now();
     t = (ros::Time::now() - t_init).toSec();
@@ -1056,6 +1080,7 @@ int main(int argc, char **argv)
       if (t >= (tThrow - time_adv) && fsHand)
       {
         pub_sh.publish(hand_msg);
+        pub_real_sh.publish(real_hand_msg);
         fsHand = false;
       }
 

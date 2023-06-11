@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <signal.h>
+#include <stdlib.h>
 
 #include <geometry_msgs/PoseStamped.h>
 
@@ -153,10 +154,11 @@ int main(int argc, char **argv)
   // ros::Publisher pub_cube = node_handle.advertise<panda_controllers::cubeRef>("/qb_class/cube_ref",1);
 
   ros::Publisher pub_sh = node_handle.advertise<std_msgs::Float64>("/right_hand_v2s/synergy_command", 1);
-
+  
   ros::Subscriber sub_cmd = node_handle.subscribe("/project_impedance_controller/franka_ee_pose", 1,
+                                                  &poseCallback);                                                 
+  ros::Subscriber sub_sim = node_handle.subscribe("/cartesian_impedance_example_controller/equilibrium_pose", 1,
                                                   &poseCallback);
-
   ros::Rate loop_rate(100);
 
   signal(SIGINT, signal_callback_handler);
@@ -165,15 +167,20 @@ int main(int argc, char **argv)
   // control_msgs::GripperCommandActionGoal gripper_msg;
   // franka_gripper::GraspActionGoal gripper_grasp_msg;
   // End new code
+  int res;
 
   cout << "Waiting for initial position" << endl;
   waitForPos();
   while (true)
   {
     waitForPos();
+    cout << flush;
+    res = system("clear");
+    if(res == 0);
+    cout << "I am here:" << endl;
     cout << "Position: " << pos.x() << "i + " << pos.y() << "j + " << pos.z() << "k " << endl;
     cout << "Orientation: " << orient.x << "i + " << orient.y << "j + " << orient.z << "k + " << orient.w << endl;
-    waitSec(10);
+    waitSec(1);
   }
     
 }
