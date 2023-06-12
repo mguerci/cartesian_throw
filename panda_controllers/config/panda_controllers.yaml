@@ -105,6 +105,19 @@ project_impedance_controller_quat:
         - panda_joint7
     var_damp: true 
 
+throw_par: 
+    PP_time: 5
+    quatGrasp: 
+        - [-0.72, -0.0188, -0.69288, 0.02359]
+    obj_position: 
+        - [0.538, -0.25, 0.186]
+    quatThrow:
+        - [0.840174, -0.330113, 0.192424, -0.384847]
+    pos_startThrow:
+        - [0.4, -0.3, 0.5]
+
+
+
 # PROVA 2: K_default=200, SCENDE;PRENDE OGGETTO; RISALE; RISCENDE; LASCIA OGGETTO; RISALE
 # traj_par: 
 #     N_ACTION : 5

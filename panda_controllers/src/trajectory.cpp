@@ -22,6 +22,7 @@
 #include <geometry_msgs/PoseStamped.h>
 
 #include <panda_controllers/DesiredTrajectory.h>
+#include "utils/parsing_utilities.h"
 // #include <panda_controllers/DesiredTrajectory.h>
 // #include <panda_controllers/cubeRef.h>
 // #include "panda_controllers/utils/parsing_utilities.h"
@@ -44,7 +45,6 @@
 #include <Matrix3x3.hpp>
 
 #define G 9.8182
-#define PP_time 5 // Time for pick & place task
 #define RATE_FREQ 500
 #define MAX_V 1.7
 #define MAX_A 13
@@ -88,6 +88,7 @@ typedef struct orient_struct
 Eigen::Vector3d pos;
 msgQuat orient;
 bool pos_received = false;
+int PP_time = 5; // Time for pick & place task
 // Previous one was:
 // Eigen::Vector3d orient; //Be careful--> watch data type
 // Orientation from ROS messages expressed in (x,y,z,w)
@@ -148,130 +149,6 @@ int sign(double val)
   return 0;
 }
 
-// angleData computeAngle(double l, double zTh, double g, double xTh, double xGr)
-// {
-//   double delta_z, delta_x, F;
-//   double vMin = 100000000;
-//   double theta_min, theta_start = M_PI_4;
-//   double tr = 0.01;
-//   angleData result;
-//   result.found = false;
-
-//   delta_z = zTh + l;
-//   delta_x = xGr - xTh;
-
-//   for (double theta = -M_PI / 3; theta <= M_PI / 3; theta += 0.1)
-//   {
-//     for (double v = 0.1; v <= 5; v += 0.05)
-//     {
-//       F = -delta_x + ((pow(v, 2)) / (2 * g)) * (sin(2 * theta) + 2 * cos(theta) * sqrt((pow(sin(theta), 2)) + (2 * g * delta_z) / (pow(v, 2))));
-//       if (abs(F) <= tr)
-//       {
-//         if (abs(v) < vMin)
-//         {
-//           result.found = true;
-//           result.theta = theta;
-//           result.v = v;
-//         }
-//       }
-//     }
-//   }
-//   return result;
-// }
-
-// throwData computeThrow(Eigen::Vector3d xGround, double **mat, int n, int m, double marg)
-// {
-//   double vMin = 100000000, beta, dTh, zTh, Dx, Dz, v, tFl, l;
-//   Eigen::Vector3d xThrow;
-//   xThrow.x() = 0;
-//   xThrow.y() = 0;
-//   xThrow.z() = 0;
-//   Eigen::Vector3d vThrow;
-//   vThrow.x() = 0;
-//   vThrow.y() = 0;
-//   vThrow.z() = 0;
-//   Eigen::Vector3d aThrow;
-//   aThrow.x() = 0;
-//   aThrow.y() = 0;
-//   aThrow.z() = 0;
-//   bool found = false;
-//   throwData result;
-//   angleData ad;
-
-//   char temp;
-
-//   // cout << "Computing throw data for X_ground = \n"  << xGround << endl;
-//   // cin >> temp;
-//   // xGround ok
-//   l = -xGround.z();
-//   beta = atan2(xGround.y(), xGround.x());
-
-//   // for (int i = 0; i < m; i++)
-//   // {
-//   //   zTh = mat[1][i];
-//   //   if (zTh>=0.5)
-//   //   {
-//   //       dTh = mat[0][i];
-//   //       // cout << "X = " << dTh << " ; Z = " << zTh << endl;
-//   //       // while (cin.get() != '\n');
-
-//   //       Dx = sqrt(pow(xGround.x(), 2) + pow(xGround.y(), 2)) + marg;
-//   //       ad = computeAngle(l, zTh, G, dTh, Dx);
-//   //       if(ad.found)
-//   //       {
-//   //         if(ad.v < vMin)
-//   //         {
-//   //           // cout << "Found result\n" << endl;
-//   //           // cout << "X = " << dTh << " ; Z = " << zTh << " ; V = " << ad.v << endl;
-//   //           // cin >> carlo;
-//   //           vMin = ad.v;
-//   //           result.theta = ad.theta;
-//   //           result.found = true;
-//   //           xThrow.x() = (dTh - marg * sign(dTh)) * cos(beta);
-//   //           xThrow.y() = (dTh - marg * sign(dTh)) * sin(beta);
-//   //           xThrow.z() = zTh;
-//   //           vThrow.x() = vMin * cos(beta) * cos(ad.theta);
-//   //           vThrow.y() = vMin * sin(beta) * cos(ad.theta);
-//   //           vThrow.z() = vMin * sin(ad.theta);
-//   //         }
-//   //       }
-
-//   //   }
-
-//   // }
-
-//   for (int i = 0; i < m; i++)
-//   {
-//     zTh = mat[1][i];
-//     if (zTh >= 0.5)
-//     {
-//       dTh = mat[0][i];
-//       Dx = sqrt(pow(xGround.x(), 2) + pow(xGround.y(), 2)) - dTh + marg;
-//       Dz = xGround.z() - zTh;
-//       v = sqrt((pow(Dx, 2) * G) / (2 * (Dx - Dz)));
-
-//       if (!isnan(v) && v < vMin)
-//       {
-//         tFl = Dx / v;
-//         found = true;
-//         vMin = v;
-//         xThrow.x() = (dTh - marg * sign(dTh)) * cos(beta);
-//         xThrow.y() = (dTh - marg * sign(dTh)) * sin(beta);
-//         xThrow.z() = zTh;
-
-//         vThrow.x() = v * cos(beta);
-//         vThrow.y() = v * sin(beta);
-//         vThrow.z() = v;
-//       }
-//     }
-//   }
-//   result.found = found;
-//   result.xThrow = xThrow;
-//   result.vThrow = vThrow;
-//   result.aThrow = aThrow;
-//   return result;
-// }
-
 throwData computeThrow(Eigen::Vector3d xStart, Eigen::Vector3d xGround, double marg)
 {
   double alpha, beta, gamma, r, c, t_2, start, s, dx, V_new, eta;
@@ -306,7 +183,6 @@ throwData computeThrow(Eigen::Vector3d xStart, Eigen::Vector3d xGround, double m
   vThrow.setZero();
   Eigen::Vector3d aThrow;
   aThrow.setZero();
-  bool found = false;
   throwData result;
 
   for (double t = start; t <= t_2; t += step)
@@ -320,6 +196,9 @@ throwData computeThrow(Eigen::Vector3d xStart, Eigen::Vector3d xGround, double m
     xThrow_new.x() = xStart.x() + s * v(0);
     xThrow_new.y() = xStart.y() + s * v(1);
     xThrow_new.z() = xStart.z() + t * u(2);
+
+    if (xThrow_new.z() < 0.4)
+      continue;
 
     dx = sqrt(pow((xGround.x() - xThrow_new.x()), 2) + pow((xGround.y() - xThrow_new.y()), 2));
     P_1(0) = dx;
@@ -337,7 +216,7 @@ throwData computeThrow(Eigen::Vector3d xStart, Eigen::Vector3d xGround, double m
     }
   }
 
-  if (found)
+  if (result.found)
   {
     eta = atan2(xGround.y() - xStart.y(), xGround.x() - xStart.x());
     vThrow.x() = V * cos(eta) * cos(M_PI_4);
@@ -345,7 +224,6 @@ throwData computeThrow(Eigen::Vector3d xStart, Eigen::Vector3d xGround, double m
     vThrow.z() = V * sin(M_PI_4);
   }
 
-  result.found = found;
   result.xThrow = xThrow;
   result.vThrow = vThrow;
   result.aThrow = aThrow;
@@ -392,30 +270,6 @@ Quaternion normalizeQuat(Quaternion q)
   return n;
 }
 
-// double phi(Quaternion q)
-// {
-//   double phi;
-//   q = normalizeQuat(q);
-//   phi = atan2(2 * (q.W * q.Z + q.X * q.Y), 1 - 2 * (pow(q.Y, 2) + pow(q.Z, 2)));
-//   return phi;
-// }
-
-// double theta(Quaternion q)
-// {
-//   double theta;
-//   q = normalizeQuat(q);
-//   theta = -M_PI / 2 + 2 * atan2(sqrt(1 + 2 * (q.W * q.Y - q.X * q.Z)), sqrt(1 - 2 * (q.W * q.Y - q.X * q.Z)));
-//   return theta;
-// }
-
-// double psi(Quaternion q)
-// {
-//   double psi;
-//   q = normalizeQuat(q);
-//   psi = atan2(2 * (q.W * q.X + q.Y * q.Z), 1 - 2 * (pow(q.X, 2) + pow(q.Y, 2)));
-//   return psi;
-// }
-
 bool isClose(Eigen::Vector3d p1, Eigen::Vector3d p2, double marg)
 {
   if (abs(p1.x() - p2.x()) < marg)
@@ -429,81 +283,6 @@ bool isClose(Eigen::Vector3d p1, Eigen::Vector3d p2, double marg)
     }
   }
   return false;
-}
-
-control_msgs::GripperCommandActionGoal gripMove(double ratio, double max_effort)
-{
-  double position;
-  if (ratio >= 0 && ratio <= 1)
-    position = 0.04 * ratio;
-  else
-  {
-    if (ratio < 0)
-      position = 0;
-    else
-      position = 0.04;
-  }
-
-  control_msgs::GripperCommandActionGoal gripper_msg;
-
-  gripper_msg.header.frame_id = "";
-  gripper_msg.header.seq = 0;
-  gripper_msg.header.stamp.sec = 0;
-  gripper_msg.header.stamp.nsec = 0;
-
-  gripper_msg.goal_id.id = "";
-  gripper_msg.goal_id.stamp.sec = 0;
-  gripper_msg.goal_id.stamp.nsec = 0;
-
-  gripper_msg.goal.command.max_effort = max_effort;
-  gripper_msg.goal.command.position = position;
-
-  return gripper_msg;
-}
-
-Eigen::Matrix<double, 3, 3> getRM(double angle, char ax)
-{
-  Eigen::Matrix<double, 3, 3> R;
-  for (int i = 0; i < 3; i++)
-  {
-    for (int j = 0; i < 3; i++)
-    {
-      R(i, j) = 0;
-    }
-  }
-  switch (ax)
-  {
-  case 'x':
-    R(0, 0) = 1;
-    R(2, 1) = sin(angle);
-    R(1, 1) = cos(angle);
-    R(1, 2) = -sin(angle);
-    R(2, 2) = cos(angle);
-    break;
-
-  case 'y':
-
-    R(0, 0) = cos(angle);
-    R(0, 2) = sin(angle);
-    R(1, 1) = 1;
-    R(2, 0) = -sin(angle);
-    R(2, 2) = cos(angle);
-    break;
-
-  case 'z':
-    R(0, 0) = cos(angle);
-    R(0, 1) = -sin(angle);
-    R(1, 0) = sin(angle);
-    R(1, 1) = cos(angle);
-    R(2, 2) = 1;
-    break;
-
-  default:
-    cout << "Non valid axis" << endl;
-    break;
-  }
-
-  return R;
 }
 
 void waitForPos()
@@ -725,10 +504,13 @@ int main(int argc, char **argv)
 
   signal(SIGINT, signal_callback_handler);
 
+  XmlRpc::XmlRpcValue throw_par;
+  Eigen::MatrixXd parser;
+  if (!node_handle.getParam("/throw_par", throw_par))
+  {
+    ROS_ERROR("Could not get the XmlRpc value.");
+  }
   panda_controllers::DesiredTrajectory traj_msg;
-  // control_msgs::GripperCommandActionGoal gripper_msg;
-  // franka_gripper::GraspActionGoal gripper_grasp_msg;
-  // End new code
 
   Eigen::Vector3d pos_f;
   Eigen::Vector3d pos_init;
@@ -737,19 +519,12 @@ int main(int argc, char **argv)
   Eigen::Vector3d pos_bar;
   Eigen::Vector3d pos_target;
   Eigen::Vector3d pos_startThrow;
-  // Eigen::Vector3d pos_reset;
-  // msgQuat orient_reset;
-
-  // pos_reset << 0.31, 0, 0.5;
-  // orient_reset.x = 1;
-  // orient_reset.y = 0;
-  // orient_reset.z = 0;
-  // orient_reset.w = 0;
 
   pos_bar.x() = 0.45;
   pos_bar.y() = 0.2;
   pos_bar.z() = 0.7;
   throwData TR;
+
   int n, m;
   double **mat = NULL;
   double tJerk, tThrow, tEnd;
@@ -765,33 +540,14 @@ int main(int argc, char **argv)
   std_msgs::Float64 hand_msg;
   std_msgs::Float64 real_hand_msg;
 
-  // franka::Gripper gripper("$robot_ip");
-
-  // std::string action(argv[2]);
-  // if (action == "dem") {
-  //     demo = true;
-  // } else if (action == "") {
-  //     demo = false;
-  // } else {
-  //     // Report invalid argument
-  // }
-
+  if (!parseParameter(throw_par, PP_time, "PP_time"))
+  {
+    ROS_ERROR("Could not parse traj_par PP_time.");
+  }
+  cout << "Setting PP_time: " << PP_time << endl;
   n = 2;
   m = 110;
   mat = getMatrix("/home/matteo/catkin_ws/src/panda_controllers/Matrix.txt", n, m);
-  // mat = getMatrix("..//Matrix.txt", n, m);
-
-  // for (int i = 0; i < n; i++)
-  // {
-  //   for (int j = 0; j < m; j++)
-  //   {
-  //     cout << mat[i][j] << " ";
-  //   }
-  //   cout << endl;
-  // }
-
-  // Obtaining initial position from topic
-  // waitSec(10);
   cout << "Waiting for initial position" << endl;
   waitForPos();
   // while (true)
@@ -807,16 +563,8 @@ int main(int argc, char **argv)
   double t;
 
   waitForPos();
-  // From message
   pos_init = pos;
-
-  // cout << "initial position received: \n"
-  //      << pos_init << endl;
-  // cout << "initial orientation received: " << orient.x << " " << orient.y << " " << orient.z << " " << orient.w << endl;
-
-  Quaternion quatReset = Quaternion(0.999997, -0.000151483, 0.0010959, 3.50181e-05);
   Quaternion quatStart = Quaternion(orient.x, orient.y, orient.z, orient.w);
-  // quatStart = quatReset;
 
   // New: with real time
   double ratio;
@@ -887,11 +635,25 @@ int main(int argc, char **argv)
     quatHand.W = 0.6533;
 
     // SIMULATION
-    quatHand.X = 0.7;
-    quatHand.Y = 0.0356;
-    quatHand.Z = 0.7144;
-    quatHand.W = 0.0086;
+    // quatHand.X = 0.7;
+    // quatHand.Y = 0.0356;
+    // quatHand.Z = 0.7144;
+    // quatHand.W = 0.0086;
+    quatHand.X = -0.72;
+    quatHand.Y = -0.0188;
+    quatHand.Z = -0.69288;
+    quatHand.W = 0.02359;
+
+    if (!parseParameter(throw_par, parser, "quatGrasp"))
+    {
+      ROS_ERROR("Could not parse traj_par quatGrasp.");
+    }
+    quatHand.X = parser(0, 0);
+    quatHand.Y = parser(0, 1);
+    quatHand.Z = parser(0, 2);
+    quatHand.W = parser(0, 3);
     quatHand = normalizeQuat(quatHand);
+    // cout << "Orientation: " << quatHand.X << " "<< quatHand.Y << " "<< quatHand.Z << " "<< quatHand.W << endl;
     // quatHand.X = 0.26984;
     // quatHand.Y = -0.643745;
     // quatHand.Z = 0.649614;
@@ -915,9 +677,16 @@ int main(int argc, char **argv)
     // obj_init.z() = 0.05;
 
     // SIMULATION VALUES
-    obj_init.x() = 0.496;
-    obj_init.y() = -0.552;
-    obj_init.z() = 0.178;
+    obj_init.x() = 0.538;
+    obj_init.y() = -0.25;
+    obj_init.z() = 0.186;
+    if (!parseParameter(throw_par, parser, "obj_position"))
+    {
+      ROS_ERROR("Could not parse traj_par obj_position.");
+    }
+    obj_init.x() = parser(0, 0);
+    obj_init.y() = parser(0, 1);
+    obj_init.z() = parser(0, 2);
 
     pos_target = obj_init;
     pos_target.z() = obj_init.z() + 0.25;
@@ -941,9 +710,19 @@ int main(int argc, char **argv)
     // waitForPos();
     // move_EE(pos_bar, quatHand, pub_cmd);
 
-    pos_startThrow.x() = 0.48;
-    pos_startThrow.y() = -0.4;
-    pos_startThrow.z() = 0.46;
+    // pos_startThrow.x() = 0.48;
+    // pos_startThrow.y() = -0.4;
+    // pos_startThrow.z() = 0.46;
+    pos_startThrow.x() = 0.4;
+    pos_startThrow.y() = -0.3;
+    pos_startThrow.z() = 0.5;
+    if (!parseParameter(throw_par, parser, "pos_startThrow"))
+    {
+      ROS_ERROR("Could not parse traj_par pos_startThrow.");
+    }
+    pos_startThrow.x() = parser(0, 0);
+    pos_startThrow.y() = parser(0, 1);
+    pos_startThrow.z() = parser(0, 2);
     cout << "Going to start throw position" << endl;
     waitForPos();
     // move_EE(pos_startThrow, quatHand, pub_cmd);
@@ -961,17 +740,31 @@ int main(int argc, char **argv)
     // quatHand.W = 0.768254;
 
     // Quaternione per lancio obliquo
-    quatHand.X = 0.6284;
-    quatHand.Y = -0.5777;
-    quatHand.Z = 0.38434;
-    quatHand.W = -0.351634;
+    // quatHand.X = 0.6284;
+    // quatHand.Y = -0.5777;
+    // quatHand.Z = 0.38434;
+    // quatHand.W = -0.351634;
+
+    quatHand.X = 0.840174;
+    quatHand.Y = -0.330113;
+    quatHand.Z = 0.192424;
+    quatHand.W = -0.384847;
+    if (!parseParameter(throw_par, parser, "quatThrow"))
+    {
+      ROS_ERROR("Could not parse traj_par quatThrow.");
+    }
+    quatHand.X = parser(0, 0);
+    quatHand.Y = parser(0, 1);
+    quatHand.Z = parser(0, 2);
+    quatHand.W = parser(0, 3);
+    quatHand = normalizeQuat(quatHand);
     moveRotate_EE(quatHand, pos_startThrow, pub_cmd);
 
     // Rotating hand in throw orientation
     quatStart = quatHand;
     // cout << "Select throw mode: ";
     // cin >> thMode;
-    thMode = 3;
+    thMode = 4;
     // if ((thMode != 1) && (thMode != 2))
     // {
     //   thMode = 1;
@@ -1017,7 +810,7 @@ int main(int argc, char **argv)
     else if (thMode == 3)
     {
       // For x-throw
-      marg = 0.20;
+      marg = 0.15;
       // Quaternione per lancio dritto su x
       // quatHand.X = -0.262875;
       // quatHand.Y = 0.398214;
@@ -1052,19 +845,17 @@ int main(int argc, char **argv)
     }
     else if (thMode == 4)
     {
-      marg = 0.2;
-      quatHand.X = 0.208214;
-      quatHand.Y = 0.00316372;
-      quatHand.Z = 0.298056;
-      quatHand.W = -0.931559;
+      // For y-throw
+      marg = 0.15;
 
-      pos_f.x() = 2;
-      pos_f.y() = 0.4;
+      // Throw
+      pos_f.x() = 1;
+      pos_f.y() = 0.3;
       pos_f.z() = 0;
 
       scale = 1;
-      tJerk = 0.4;
-      time_adv = 0.1;
+      tJerk = 1;
+      time_adv = 0.25;
     }
 
     // rotate_EE(quatHand, pub_cmd);
@@ -1126,7 +917,6 @@ int main(int argc, char **argv)
          << TR.xThrow << "\nWith velocity:\n"
          << TR.vThrow << endl;
 
-    cin >> hand_msg.data;
     // Orientating hand
     Quaternion quatThrow;
     quatThrow = quatHand;
@@ -1208,9 +998,9 @@ int main(int argc, char **argv)
           // traj.vel_des.y() = throwValues.vThrow.y();
           // traj.vel_des.z() = throwValues.vThrow.z() - G * (t - tThrow);
           interpolator_posSpeed(throwValues.xThrow, throwValues.vThrow, th, t - tThrow);
-          cout << "Braking:\n"
-               << traj.pos_des << endl;
-          cout << "Braking time: " << t - tThrow << endl;
+          // cout << "Braking:\n"
+          //      << traj.pos_des << endl;
+          // cout << "Braking time: " << t - tThrow << endl;
         }
       }
 

@@ -141,7 +141,7 @@ int main(int argc, char **argv)
 {
 
   // New code
-  ros::init(argc, argv, "trajectory");
+  ros::init(argc, argv, "where_am_i");
 
   ros::NodeHandle node_handle;
 

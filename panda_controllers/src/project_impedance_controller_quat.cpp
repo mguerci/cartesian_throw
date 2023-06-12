@@ -640,8 +640,8 @@ void ProjectImpedanceControllerQuat::update(  const ros::Time& /*time*/,
 	Eigen::Matrix<double,7,7> K_POS;
 	K_POS.setZero();
 	K_POS(1,1) = 0.5;
-	tau_nullspace = (K_POS*(q_d_nullspace_ - q)+KVVEL*(-dq));// q_d_nullspace_ is what in MATLAB is q_bar 
-	// tau_nullspace = KVVEL*(-dq);
+	// tau_nullspace = (K_POS*(q_d_nullspace_ - q)+KVVEL*(-dq));// q_d_nullspace_ is what in MATLAB is q_bar 
+	tau_nullspace = KVVEL*(-dq);
 	// cout << tau_nullspace << endl;
 	tau_d = tau1 + Pr2*tau_nullspace; 
 
