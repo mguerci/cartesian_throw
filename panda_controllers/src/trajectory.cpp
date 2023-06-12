@@ -506,10 +506,12 @@ int main(int argc, char **argv)
 
   XmlRpc::XmlRpcValue throw_par;
   Eigen::MatrixXd parser;
-  if (!node_handle.getParam("/throw_par", throw_par))
+  cout << "Getting parameters" << endl;
+  while (!node_handle.getParam("/throw_par", throw_par))
   {
-    ROS_ERROR("Could not get the XmlRpc value.");
+    waitSec(1);
   }
+  
   panda_controllers::DesiredTrajectory traj_msg;
 
   Eigen::Vector3d pos_f;
